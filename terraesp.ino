@@ -21,10 +21,11 @@
 String ssid = "";
 String password = "";
 String host = "terraesp";
-bool dst = false; // DaylightSavingTime
+bool dst = false; // daylight saving time
 int DHT22_pin;
 RainSettings rain;
 LinkedList<Button*> buttons;
+LinkedList<AlarmSettings*> alarms;
 
 // sensors
 DHT *dht = nullptr;
@@ -32,15 +33,9 @@ RingBufCPP<time_t, 720> buffer_time;
 RingBufCPP<float, 720> buffer_temp;
 RingBufCPP<float, 720> buffer_humid;
 
-
 //WebServer
 WebServer server(80);
 File fsUploadFile;
-
-// timer
-hw_timer_t *timer = NULL;
-LinkedList<AlarmSettings*> alarms;
-//LinkedList<ThreshSettings*> threshs;
 
 
 void setup() {
@@ -106,7 +101,7 @@ void loop() {
     // serve HTTP content
     server.handleClient();
 
-    // delay and handle alarms/sensors and so on
+    // delay, handle alarms/sensors and so on
     Alarm.delay(10);
 }
 
@@ -123,9 +118,8 @@ void loadSettings(fs::FS &fs) {
     DynamicJsonBuffer jsonBuffer;
     JsonObject &root = jsonBuffer.parseObject(json);
     if (!root.success()) {
-        Serial.println("----- parseObject() failed -----");
-        return;   //if parsing failed, this will exit the function and not change the values to 00
-
+        Serial.println("----- parseObject() for config.json failed -----");
+        return;
     } else {
         // load wlan settings
         JsonObject &wlanJSON = root["wlan"];
@@ -141,8 +135,6 @@ void loadSettings(fs::FS &fs) {
         // load timer settings
         JsonArray &timerJSON = root["timer"];
         for (auto &t : timerJSON) {
-            //Serial.println((const char*)t["name"]);
-            //pinMode((int)t["pin"], OUTPUT);
             struct AlarmSettings *s = new struct AlarmSettings;
             s->name = (const char *) t["name"];
             s->pin = (uint8_t) t["pin"];
@@ -183,7 +175,7 @@ void loadSettings(fs::FS &fs) {
             rain.threshold = (int) rainJSON["threshold"];
             rain.initialized = true;
         } else {
-            Serial.println("No config for rain");
+            Serial.println("No (valid) config for rain");
         }
 
         // load buttons
@@ -216,9 +208,9 @@ void loadSettings(fs::FS &fs) {
             }
         }
 
-        // general
+        // general settings
         JsonObject &generalJSON = root["general"];
-        dst = (bool)generalJSON["dst"];
+        dst = (bool)generalJSON["dst"]; // daylight saving time
     }
 }
 
@@ -247,7 +239,7 @@ void connectWiFi() {
 
 /**************************************
  * 
- * HTTP handling
+ * HTTP handler
  * 
  *************************************/
 void handleRoot() {
@@ -428,6 +420,12 @@ void timerCallback() {
     }
 }
 
+/**************************************
+ *
+ * Initialize timers, return false if
+ * time is not synced
+ *
+ *************************************/
 bool initTimers() {
     if (timeStatus() != timeSet) {
         Serial.println("Cannot init timers. Time not set");
@@ -461,6 +459,11 @@ bool initTimers() {
     return true;
 }
 
+/**************************************
+ *
+ * NTP time sync provider
+ *
+ *************************************/
 time_t getNtpTime() {
     //configTime(-3600, -3600, "69.10.161.7");
     configTime(-3600, dst ? 3600 : 0, "69.10.161.7");
@@ -525,6 +528,11 @@ void readSensors() {
     }
 }
 
+/**************************************
+ *
+ * Start rain / whatever for a given duration
+ *
+ *************************************/
 void letItRain() {
     if (rain.initialized) {
         digitalWrite(rain.pin, HIGH);
@@ -538,6 +546,11 @@ void stopRain() {
     }
 }
 
+/**************************************
+ *
+ * Create mock values for chart test
+ *
+ *************************************/
 void randomValues(size_t count) {
     time_t t;
     float temp;
