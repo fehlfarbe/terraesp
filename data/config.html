@@ -1,0 +1,49 @@
+<script type="text/javascript">
+$(function () {
+    $(document).ready(function() {
+        jQuery.get("/config.json", function(json) {
+            console.log("got config", json);
+            $("#config").val(JSON.stringify(json, null, 2));
+        });
+        
+        $('#update_config').on({
+            'click': function() {
+                try {
+                    console.log($('#config').val());
+                    JSON.parse($('#config').val());
+                } catch (e) {
+                    alert ("JSON format wrong!");
+                    return false;
+                }
+
+                $("#config_container :input :button").attr("disabled", true);
+
+                // POST JSON config
+                $.post( "/config/update", { 'data' : $('#config').val() }, function( data ) {
+                    console.log(data);
+                }).done(function(s) {
+                    alert("Config gespeichert! Neustart wird durchgeführt");
+                    location.reload();
+                })
+                .fail(function(e) {
+                    alert("error " +e);
+                });
+            }
+        });
+        
+    });
+});
+</script>
+
+
+<h1>Config</h1>
+
+<div id="config_container">
+  <div id="config_fields"></div>
+
+  <div class="form-group">
+    <label for="comment">JSON Config:</label>
+    <textarea class="form-control" rows="35" id="config"></textarea>
+  </div>
+  <button id="update_config" type="button" class="btn btn-primary btn-block">Update config</button>
+</div>

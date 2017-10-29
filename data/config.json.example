@@ -1,0 +1,23 @@
+{
+    "wlan" :
+        {"ssid" : "SSID",
+        "pass" : "PASSWORD",
+        "host" : "terraesp"
+        },
+    "timer" : [
+        {"name" : "Licht", "pin" : 5, "on" : "18:36", "off" : "18:40"},
+        {"name" : "LED", "pin" : 18, "on" : "12:00", "off" : "16:00"}
+        ],
+    "sensors" : [
+        { "type" : "AM2301", "pin" : 15 }
+        ],
+    "rain" : {"pin" : 19, "duration" : 10, "threshold" : 45},
+    "buttons" : [
+        {"name" : "Licht", "pin" : 5, "type" : "toggle"},
+        {"name" : "Wasser", "pin" : 19, "type" : "toggle"},
+        {"name" : "Wind", "pin" : 20, "type" : "scroll", "min" : 0, "max" : 255}
+    ],
+    "general" : {
+        "dst" : false
+    }
+}
