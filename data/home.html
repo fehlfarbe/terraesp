@@ -44,7 +44,18 @@
                 yAxis: {
                     title: {
                         text: 'C'
-                    }
+                    },
+                    plotLines: [{
+                        color: 'blue', // Color value
+                        dashStyle: 'dot', // Style of the plot line. Default to solid
+                        value: 0, // Value of where the line will appear
+                        width: 2, // Width of the line
+                        label: {
+                            text: 'minimum humidity', // Content of the label.
+                            align: 'left', // Positioning of the label.
+                            color: 'blue',
+                        }
+                    }]
                     //startOnTick: false,
                     //showFirstLabel: false
                 },
@@ -114,6 +125,7 @@
                     }
                     options.series[0].data = json["temperature"];
                     options.series[1].data = json["humid"];
+                    options.yAxis.plotLines[0].value = json["humid_level"];
                     chart = new Highcharts.Chart(options);
                 });
             });

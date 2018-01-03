@@ -12,6 +12,11 @@ struct AlarmSettings {
   bool init = false;
 };
 
+struct TimeSettings {
+    bool dst = false;
+    int gmt_offset_sec = 0;
+};
+
 //
 //enum ThreshAction {
 //  ON,
@@ -37,6 +42,7 @@ struct RainSettings {
     int duration;
     float threshold;
     bool initialized = false;
+    bool inverted = false;
 };
 
 enum ButtonType {
@@ -49,6 +55,7 @@ struct Button {
     String name;
     uint8_t pin;
     ButtonType type;
+    bool inverted = false;
     int min = 0;
     int max = 0;
     uint8_t channel = 0;

@@ -1,5 +1,7 @@
 #include <WiFi.h>
 #include <ESPmDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
 #include <HTTPClient.h>
 #include <WebServer.h>
 #include "ESPTemplateProcessor.h"
@@ -21,9 +23,10 @@
 String ssid = "";
 String password = "";
 String host = "terraesp";
-bool dst = false; // daylight saving time
-int DHT22_pin;
-RainSettings rain;
+String ap_ssid = "terraesp";
+bool ap_mode = false;
+TimeSettings settings_time;
+RainSettings settings_rain;
 LinkedList<Button*> buttons;
 LinkedList<AlarmSettings*> alarms;
 
@@ -54,7 +57,9 @@ void setup() {
     loadSettings(SPIFFS);
 
     // WiFi and HTTP
-    connectWiFi();
+    if(!connectWiFi()){
+        createAP();
+    }
     server.begin();
 
     // sync time
@@ -82,6 +87,30 @@ void setup() {
     server.on("/sensordata.json", handleSensordata);
     server.on("/buttons.json", handleButtons);
     server.on("/button/change", HTTP_POST, handleButtonChange);
+    server.on("/reboot", []() {
+        server.send(200, "text/json", "{\"answer\": \"ok\"}");
+        Alarm.delay(100);
+        ESP.restart();
+    });
+    server.on("/time", []() { // return current device time
+        String time = String(now());
+        server.send(200, "text/json", "{\"time\": \"" + time + "\"}");
+    });
+
+//    server.on("/bootstrap.min.js", []() {
+//        Serial.println("BOOTSTRAP JS");
+//        File dataFile = SPIFFS.open("/bootstrap.min.js");
+//        server.send(200, "text/json", dataFile.readString());
+//    });
+//    server.on("/bootstrap.min.css", []() {
+//        Serial.println("BOOTSTRAP CSS START");
+//        File dataFile = SPIFFS.open("/bootstrap.min.css");
+//        server.send(200, "text/json", dataFile.readString());
+//        Serial.println("BOOTSTRAP CSS END");
+//    });
+
+    // init OTA update
+    initOTA();
 
     // DEBUG: ADD RANDOM SENSOR VALUES
     //randomValues(720);
@@ -89,9 +118,12 @@ void setup() {
 
 void loop() {
     // check WiFi an reconnect if necessary
-    if (WiFi.status() != WL_CONNECTED) {
+    if (WiFi.status() != WL_CONNECTED and !ap_mode) {
         connectWiFi();
     }
+
+    // handle OTA updates
+    ArduinoOTA.handle();
 
     // sync time
     if (timeStatus() == timeNotSet) {
@@ -128,8 +160,8 @@ void loadSettings(fs::FS &fs) {
             password = (const char *) wlanJSON["pass"];
             host = (const char *) wlanJSON["host"];
         } else {
-            // @ToDo: start access point
             Serial.println("Cannon read WiFi config, ToDo: start access point");
+            createAP();
         }
 
         // load timer settings
@@ -170,10 +202,13 @@ void loadSettings(fs::FS &fs) {
         // load rain
         JsonObject &rainJSON = root["rain"];
         if (rainJSON.success()) {
-            rain.pin = (uint8_t) rainJSON["pin"];
-            rain.duration = (int) rainJSON["duration"];
-            rain.threshold = (int) rainJSON["threshold"];
-            rain.initialized = true;
+            settings_rain.pin = (uint8_t) rainJSON["pin"];
+            settings_rain.duration = (int) rainJSON["duration"];
+            settings_rain.threshold = (int) rainJSON["threshold"];
+            settings_rain.initialized = true;
+            settings_rain.inverted = (bool) rainJSON["inverted"];
+            pinMode(settings_rain.pin, OUTPUT);
+            digitalWrite(settings_rain.pin, (uint8_t) settings_rain.inverted);
         } else {
             Serial.println("No (valid) config for rain");
         }
@@ -186,6 +221,7 @@ void loadSettings(fs::FS &fs) {
             btn->name = (const char *) b["name"];
             btn->pin = (uint8_t) b["pin"];
             btn->type = strcmp(b["type"], "toggle") ? BTN_SLIDER : BTN_TOGGLE;
+            btn->inverted = (bool) b["inverted"];
             btn->min = (int) b["min"];
             btn->max = (int) b["max"];
             buttons.add(btn);
@@ -194,6 +230,7 @@ void loadSettings(fs::FS &fs) {
             switch(btn->type){
                 case BTN_TOGGLE:
                     pinMode(btn->pin, OUTPUT);
+                    digitalWrite(btn->pin, (uint8_t) btn->inverted);
                     break;
                 case BTN_SLIDER:
                     // Initialize channels
@@ -210,7 +247,8 @@ void loadSettings(fs::FS &fs) {
 
         // general settings
         JsonObject &generalJSON = root["general"];
-        dst = (bool)generalJSON["dst"]; // daylight saving time
+        settings_time.dst = (bool)generalJSON["dst"]; // daylight saving time
+        settings_time.gmt_offset_sec = (int)generalJSON["gmt_offset"]; // daylight saving time
     }
 }
 
@@ -219,14 +257,18 @@ void loadSettings(fs::FS &fs) {
  * (Re-)connect WiFi
  * 
  *************************************/
-void connectWiFi() {
+bool connectWiFi() {
     Serial.print("Connecting to ");
     Serial.println(ssid);
     WiFi.begin(ssid.c_str(), password.c_str());
 
+    int retries = 0;
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
+        if(retries++ > 10){
+            return false;
+        }
     }
 
     Serial.println("");
@@ -235,6 +277,58 @@ void connectWiFi() {
     Serial.println(WiFi.localIP());
 
     MDNS.begin(host.c_str());
+    return true;
+}
+
+void createAP(){
+    Serial.println("Cannot connect to WiFi. Create Access Point");
+    WiFi.softAP(ap_ssid.c_str());
+    ap_mode = true;
+    IPAddress myIP = WiFi.softAPIP();
+    Serial.print("AP IP address: ");
+    Serial.println(myIP);
+}
+
+void initOTA(){
+    // Port defaults to 3232
+    // ArduinoOTA.setPort(3232);
+
+    // Hostname defaults to esp3232-[MAC]
+    ArduinoOTA.setHostname(host.c_str());
+
+    // No authentication by default
+    // ArduinoOTA.setPassword("admin");
+
+    // Password can be set with it's md5 value as well
+    // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
+    ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
+
+    ArduinoOTA.onStart([]() {
+        String type;
+        if (ArduinoOTA.getCommand() == U_FLASH)
+            type = "sketch";
+        else // U_SPIFFS
+            type = "filesystem";
+
+        // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+        Serial.println("Start updating " + type);
+    });
+    ArduinoOTA.onEnd([]() {
+        Serial.println("\nEnd");
+    });
+    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+        Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+    });
+    ArduinoOTA.onError([](ota_error_t error) {
+        Serial.printf("Error[%u]: ", error);
+        if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+        else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+        else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+        else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+        else if (error == OTA_END_ERROR) Serial.println("End Failed");
+    });
+    ArduinoOTA.begin();
+    Serial.println("OTA update ready");
 }
 
 /**************************************
@@ -244,7 +338,7 @@ void connectWiFi() {
  *************************************/
 void handleRoot() {
     if (ESPTemplateProcessor(server).send(String("/base.html"), indexProcessor)) {
-        Serial.println("SUCCESS");
+        //Serial.println("SUCCESS");
     } else {
         Serial.println("FAIL");
         server.send(404, "text/plain", "page not found.");
@@ -252,7 +346,7 @@ void handleRoot() {
 }
 
 String indexProcessor(const String &key) {
-    Serial.println(String("KEY IS ") + key);
+    //Serial.println(String("KEY IS ") + key);
     if (key == "CONTENT") {
         File dataFile = SPIFFS.open("/home.html");
         return dataFile.readString();
@@ -270,7 +364,7 @@ void handleConfig() {
 void handleSensordata() {
     String json_temp = "[";
     String json_humid = "[";
-    Serial.println(buffer_temp.numElements());
+    //Serial.println(buffer_temp.numElements());
     for (size_t i = 0; i < buffer_temp.numElements(); i++) {
         json_temp += "[";
         json_temp += *buffer_time.peek(i);
@@ -289,8 +383,10 @@ void handleSensordata() {
     }
     json_temp += "]";
     json_humid += "]";
+
     server.send(200, "text/json",
-                "{\"temperature\": " + json_temp + ",\"humid\": " + json_humid + "}");
+                "{\"temperature\": " + json_temp + ",\"humid\": " + json_humid +
+                        ",\"humid_level\" : " + String(settings_rain.threshold) + "}");
 }
 
 void handleButtons(){
@@ -304,7 +400,7 @@ void handleButtons(){
         btn["pin"] = b.pin;
         switch(b.type){
             case BTN_TOGGLE:
-                btn["state"] = digitalRead(b.pin) != 0;
+                btn["state"] = digitalRead(b.pin) ^ b.inverted != 0;
                 break;
             case BTN_SLIDER:
                 btn["min"] = b.min;
@@ -322,14 +418,15 @@ void handleButtonChange(){
     Serial.println("Button changed");
     String name = server.arg("name"); //root["name"];
     uint8_t value = server.arg("value").toInt();
-    Serial.println(name);
-    Serial.println(value);
+    Serial.print(name);
+    Serial.print(": ");
     for(size_t i=0; i<buttons.size(); i++) {
         Button b = *buttons.get(i);
         if(name == b.name){
             switch(b.type){
                 case BTN_TOGGLE:
-                    digitalWrite(b.pin, value);
+                    Serial.println(value ^ b.inverted);
+                    digitalWrite(b.pin, value ^ b.inverted);
                     break;
                 case BTN_SLIDER:
                     if(value <= b.max && value >= b.min){
@@ -466,7 +563,13 @@ bool initTimers() {
  *************************************/
 time_t getNtpTime() {
     //configTime(-3600, -3600, "69.10.161.7");
-    configTime(-3600, dst ? 3600 : 0, "69.10.161.7");
+
+    Serial.print("Update time with GMT+");
+    Serial.print(settings_time.gmt_offset_sec);
+    Serial.print(" and DST: ");
+    Serial.println(settings_time.dst);
+
+    configTime(0, settings_time.dst ? 3600 : 0, "69.10.161.7");
     struct tm timeinfo;
     if (!getLocalTime(&timeinfo)) {
         Serial.println("Failed to obtain time");
@@ -474,7 +577,7 @@ time_t getNtpTime() {
         Serial.print("Synced time to: ");
         Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
     }
-    return mktime(&timeinfo) + 7200;
+    return mktime(&timeinfo) + settings_time.gmt_offset_sec;
 }
 
 /**************************************
@@ -495,20 +598,25 @@ void readSensors() {
             buffer_humid.pull(&humid);
         }
 
-        // get new values
-        t = now();
-        temp = dht->readTemperature();
-        humid = dht->readHumidity();
+        // get new values (try up to 10 times if NaN or incorrect values)
+        size_t i = 0;
+        while(i++ < 10){
+            t = now();
+            temp = dht->readTemperature();
+            humid = dht->readHumidity();
 
-        // test for NaN values
-        if (!isnan(t) && !isnan(temp) && !isnan(humid)) {
-            // add values to buffer
-            buffer_time.add(t);
-            buffer_temp.add(temp);
-            buffer_humid.add(humid);
-        } else {
-            Serial.println("NaN value detected");
-            return;
+            // test for NaN values and filter incorrect values
+            if (isnan(temp) || isnan(humid) || humid > 100 || humid < 0 || temp > 100 || temp < - 10) {
+                if(i==10){
+                    Serial.println("Too many NaN values detected");
+                    return;
+                }
+                // delay time between reads > 2s
+                delay(2100);
+                continue;
+            } else {
+                break;
+            }
         }
 
         Serial.print(t);
@@ -516,12 +624,19 @@ void readSensors() {
         Serial.print("Temperature: ");
         Serial.print(temp);
         Serial.print(" Humidity: ");
-        Serial.println(humid);
+        Serial.print(humid);
+        Serial.print(" try: ");
+        Serial.println(i);
+
+        // add values to buffer
+        buffer_time.add(t);
+        buffer_temp.add(temp);
+        buffer_humid.add(humid);
 
         // activate rain
-        if (rain.initialized && humid < rain.threshold) {
-            String s = "Humidity is under threshold " + String(humid) + "<" + String(rain.threshold);
-            s += "\nstart rain for " + String(rain.duration) + " seconds...";
+        if (settings_rain.initialized && humid < settings_rain.threshold) {
+            String s = "Humidity is under threshold " + String(humid) + "<" + String(settings_rain.threshold);
+            s += "\nstart rain for " + String(settings_rain.duration) + " seconds...";
             Serial.println(s);
             letItRain();
         }
@@ -534,15 +649,15 @@ void readSensors() {
  *
  *************************************/
 void letItRain() {
-    if (rain.initialized) {
-        digitalWrite(rain.pin, HIGH);
-        Alarm.timerOnce(rain.duration, stopRain);
+    if (settings_rain.initialized) {
+        digitalWrite(settings_rain.pin, (uint8_t) !settings_rain.inverted);
+        Alarm.timerOnce(settings_rain.duration, stopRain);
     }
 }
 
 void stopRain() {
-    if (rain.initialized) {
-        digitalWrite(rain.pin, LOW);
+    if (settings_rain.initialized) {
+        digitalWrite(settings_rain.pin, (uint8_t) settings_rain.inverted);
     }
 }
 
