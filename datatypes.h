@@ -17,6 +17,15 @@ struct TimeSettings {
     int gmt_offset_sec = 0;
 };
 
+enum DHTType {
+    UNKNOWN,
+    DHT11,
+    DHT21,
+    DHT22,
+    AM2302,
+    AM2301
+};
+
 //
 //enum ThreshAction {
 //  ON,

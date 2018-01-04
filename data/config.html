@@ -5,6 +5,14 @@ $(function () {
             console.log("got config", json);
             $("#config").val(JSON.stringify(json, null, 2));
         });
+
+        jQuery.get("/stats.json", function(json) {
+            console.log("got stats", json);
+            jQuery.each(json, function(i, val) {
+                $("#stats_content").append("<p>" + i + ": " + val + "</p>");
+            });
+            //$("#stats_content").html(JSON.stringify(json, null, 2));
+        });
         
         $('#update_config').on({
             'click': function() {
@@ -46,4 +54,9 @@ $(function () {
     <textarea class="form-control" rows="35" id="config"></textarea>
   </div>
   <button id="update_config" type="button" class="btn btn-primary btn-block">Update config</button>
+</div>
+
+<div id="stats" style="margin-top: 10px;">
+  <h2>Stats:</h2>
+  <div id="stats_content"></div>
 </div>

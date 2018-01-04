@@ -12,7 +12,9 @@
 #include "SPIFFS.h"
 #include <ArduinoJson.h>
 #include <LinkedList.h>
-#include <DHT.h>
+//#include <DHT.h>
+// use Rob Tillaart's DHTlib because of NaN errors in Adafruit lib
+#include "dht.h"
 #include <RingBufHelpers.h>
 #include <RingBufCPP.h>
 
@@ -31,7 +33,10 @@ LinkedList<Button*> buttons;
 LinkedList<AlarmSettings*> alarms;
 
 // sensors
-DHT *dht = nullptr;
+//DHT *dht = nullptr;
+dht dht;
+DHTType dht_type = UNKNOWN;
+uint8_t dht_pin = 0;
 RingBufCPP<time_t, 720> buffer_time;
 RingBufCPP<float, 720> buffer_temp;
 RingBufCPP<float, 720> buffer_humid;
@@ -95,6 +100,12 @@ void setup() {
     server.on("/time", []() { // return current device time
         String time = String(now());
         server.send(200, "text/json", "{\"time\": \"" + time + "\"}");
+    });
+    server.on("/stats.json", []() { // return current device time
+        server.send(200, "text/json", "{\"heap_free\": \"" + String(ESP.getFreeHeap()) + "\", "
+                                      "\"chip_rev\" : \"" + ESP.getChipRevision() + "\", "
+                                      "\"sdk\" : \"" + ESP.getSdkVersion() + "\", "
+                                      "\"cpu_freq\" : \"" + ESP.getCpuFreqMHz() + "\"}");
     });
 
 //    server.on("/bootstrap.min.js", []() {
@@ -184,18 +195,17 @@ void loadSettings(fs::FS &fs) {
             Serial.print((const char *) s["type"]);
             Serial.print(" on pin ");
             Serial.println((const char *) s["pin"]);
+            dht_pin = (uint8_t) s["pin"];
             if (strcmp((const char *) s["type"], "DHT22") == 0) {
-                dht = new DHT((int) s["pin"], DHT22);
-                dht->begin();
+                dht_type = DHT22;
+            } else if (strcmp((const char *) s["type"], "AM2302") == 0) {
+                dht_type = AM2302;
             } else if (strcmp((const char *) s["type"], "DHT21") == 0) {
-                dht = new DHT((int) s["pin"], DHT21);
-                dht->begin();
+                dht_type = DHT21;
             } else if (strcmp((const char *) s["type"], "DHT11") == 0) {
-                dht = new DHT((int) s["pin"], DHT11);
-                dht->begin();
+                dht_type = DHT11;
             } else if (strcmp((const char *) s["type"], "AM2301") == 0) {
-                dht = new DHT((int) s["pin"], AM2301);
-                dht->begin();
+                dht_type = AM2301;
             }
         }
 
@@ -529,28 +539,27 @@ bool initTimers() {
         return false;
     }
 
+    struct tm ti;
+    getLocalTime(&ti);
+    time_t t = mktime(&ti) + settings_time.gmt_offset_sec;
+    ti = *localtime(&t);
+    unsigned int time_min = ti.tm_hour * 60 + ti.tm_min;
+
     for (size_t i = 0; i < alarms.size(); i++) {
         AlarmSettings *a = alarms.get(i);
-        Serial.print("Init timer ");
-        Serial.print(a->name);
-        Serial.print(" on: ");
-        Serial.print(a->alarmOnHour);
-        Serial.print(":");
-        Serial.print(a->alarmOnMinute);
-        Serial.print(" off: ");
-        Serial.print(a->alarmOffHour);
-        Serial.print(":");
-        Serial.println(a->alarmOffMinute);
+        Serial.printf("Init timer %s on: %02d:%02d, off: %02d:%02d\n",
+        a->name.c_str(), a->alarmOnHour, a->alarmOnMinute, a->alarmOffHour, a->alarmOffMinute);
         pinMode(a->pin, OUTPUT);
-        // test timer
-//        if (i == 0) {
-//            a->alarmOnId = Alarm.alarmRepeat(hour(), minute() + 1, 0, timerCallback);
-//            a->alarmOffId = Alarm.alarmRepeat(hour(), minute() + 1, 10, timerCallback);
-//        } else {
-            a->alarmOnId = Alarm.alarmRepeat(a->alarmOnHour, a->alarmOnMinute, 0, timerCallback);
-            a->alarmOffId = Alarm.alarmRepeat(a->alarmOffHour, a->alarmOffMinute, 0, timerCallback);
-//        }
+        a->alarmOnId = Alarm.alarmRepeat(a->alarmOnHour, a->alarmOnMinute, 0, timerCallback);
+        a->alarmOffId = Alarm.alarmRepeat(a->alarmOffHour, a->alarmOffMinute, 0, timerCallback);
         a->init = true;
+
+        // activate pin if we are in the timespan
+        unsigned int alarm_on = a->alarmOnHour * 60 + a->alarmOnMinute;
+        unsigned int alarm_off = a->alarmOffHour * 60 + a->alarmOffMinute;
+        if(alarm_on < time_min && time_min < alarm_off){
+            digitalWrite(a->pin, HIGH);
+        }
     }
 
     return true;
@@ -586,7 +595,7 @@ time_t getNtpTime() {
  * 
  *************************************/
 void readSensors() {
-    if (dht) {
+    if (dht_type != UNKNOWN) {
         time_t t;
         float temp;
         float humid;
@@ -602,11 +611,53 @@ void readSensors() {
         size_t i = 0;
         while(i++ < 10){
             t = now();
-            temp = dht->readTemperature();
-            humid = dht->readHumidity();
+            int chk = -1;
+            switch (dht_type){
+                case DHT11:
+                    chk = dht.read11(dht_pin);
+                    break;
+                case DHT21:
+                    chk = dht.read21(dht_pin);
+                    break;
+                case DHT22:
+                    chk = dht.read22(dht_pin);
+                    break;
+                case AM2301:
+                    chk = dht.read2301(dht_pin);
+                    break;
+                case AM2302:
+                    chk = dht.read2302(dht_pin);
+                    break;
+                default:
+                    chk = -1;
+            }
+            switch (chk)
+            {
+                case DHTLIB_OK:
+                    Serial.print("OK,\t");
+                    break;
+                case DHTLIB_ERROR_CHECKSUM:
+                    Serial.print("Checksum error,\t");
+                    break;
+                case DHTLIB_ERROR_TIMEOUT:
+                    Serial.print("Time out error,\t");
+                    break;
+                case DHTLIB_ERROR_CONNECT:
+                    Serial.print("Connect error,\t");
+                    break;
+                case DHTLIB_ERROR_ACK_L:
+                    Serial.print("Ack Low error,\t");
+                    break;
+                case DHTLIB_ERROR_ACK_H:
+                    Serial.print("Ack High error,\t");
+                    break;
+                default:
+                    Serial.print("Unknown error,\t");
+                    break;
+            }
 
             // test for NaN values and filter incorrect values
-            if (isnan(temp) || isnan(humid) || humid > 100 || humid < 0 || temp > 100 || temp < - 10) {
+            if (chk != DHTLIB_OK) {
                 if(i==10){
                     Serial.println("Too many NaN values detected");
                     return;
@@ -615,6 +666,8 @@ void readSensors() {
                 delay(2100);
                 continue;
             } else {
+                temp = dht.temperature;
+                humid = dht.humidity;
                 break;
             }
         }
@@ -650,14 +703,16 @@ void readSensors() {
  *************************************/
 void letItRain() {
     if (settings_rain.initialized) {
-        digitalWrite(settings_rain.pin, (uint8_t) !settings_rain.inverted);
+        Serial.printf("Let it rain for %d seconds\n", settings_rain.duration);
+        digitalWrite(settings_rain.pin, settings_rain.inverted ? LOW : HIGH);
         Alarm.timerOnce(settings_rain.duration, stopRain);
     }
 }
 
 void stopRain() {
     if (settings_rain.initialized) {
-        digitalWrite(settings_rain.pin, (uint8_t) settings_rain.inverted);
+        Serial.println("Stopping rain...");
+        digitalWrite(settings_rain.pin, settings_rain.inverted ? HIGH : LOW);
     }
 }
 
