@@ -10,6 +10,7 @@ struct AlarmSettings {
   int alarmOffHour;
   int alarmOffMinute;
   bool init = false;
+  bool inverted = false;
 };
 
 struct TimeSettings {

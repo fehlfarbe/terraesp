@@ -17,6 +17,7 @@
 #include "dht.h"
 #include <RingBufHelpers.h>
 #include <RingBufCPP.h>
+#include "debug->h"
 
 #include "datatypes.h"
 #include "utils.h"
@@ -45,15 +46,21 @@ RingBufCPP<float, 720> buffer_humid;
 WebServer server(80);
 File fsUploadFile;
 
+// Telnet
+Debug *debug = nullptr;
+WiFiServer telnetServer(23);
+WiFiClient telnetClient;
+
 
 void setup() {
 
-    // start serial output
-    Serial.begin(115200);
+    // start debug output
+    debug = new Debug(0, telnetServer, telnetClient);
+    debug->begin(115200);
 
-    // File system
+    // init File system and show content
     if (!SPIFFS.begin(true)) {
-        Serial.println("Failed to mount file system");
+        debug->println("Failed to mount file system");
         return;
     }
     listDir(SPIFFS, "/", 0);
@@ -69,6 +76,7 @@ void setup() {
 
     // sync time
     setSyncProvider(getNtpTime);
+
     // init timers
     while (!initTimers()) {
         Alarm.delay(100);
@@ -109,15 +117,15 @@ void setup() {
     });
 
 //    server.on("/bootstrap.min.js", []() {
-//        Serial.println("BOOTSTRAP JS");
+//        debug->println("BOOTSTRAP JS");
 //        File dataFile = SPIFFS.open("/bootstrap.min.js");
 //        server.send(200, "text/json", dataFile.readString());
 //    });
 //    server.on("/bootstrap.min.css", []() {
-//        Serial.println("BOOTSTRAP CSS START");
+//        debug->println("BOOTSTRAP CSS START");
 //        File dataFile = SPIFFS.open("/bootstrap.min.css");
 //        server.send(200, "text/json", dataFile.readString());
-//        Serial.println("BOOTSTRAP CSS END");
+//        debug->println("BOOTSTRAP CSS END");
 //    });
 
     // init OTA update
@@ -138,11 +146,15 @@ void loop() {
 
     // sync time
     if (timeStatus() == timeNotSet) {
-        Serial.println("Waiting for synced time");
+        debug->println("Waiting for synced time");
     }
 
     // serve HTTP content
     server.handleClient();
+
+    if (telnetServer.hasClient()) {
+        debug->println("Telnet Client");
+    }
 
     // delay, handle alarms/sensors and so on
     Alarm.delay(10);
@@ -157,11 +169,11 @@ void loadSettings(fs::FS &fs) {
     File dataFile = fs.open("/config.json");
     String json = dataFile.readString();
     dataFile.close();
-    Serial.println(json);
+    debug->println(json);
     DynamicJsonBuffer jsonBuffer;
     JsonObject &root = jsonBuffer.parseObject(json);
     if (!root.success()) {
-        Serial.println("----- parseObject() for config.json failed -----");
+        debug->println("----- parseObject() for config.json failed -----");
         return;
     } else {
         // load wlan settings
@@ -171,7 +183,7 @@ void loadSettings(fs::FS &fs) {
             password = (const char *) wlanJSON["pass"];
             host = (const char *) wlanJSON["host"];
         } else {
-            Serial.println("Cannon read WiFi config, ToDo: start access point");
+            debug->println("Cannon read WiFi config, ToDo: start access point");
             createAP();
         }
 
@@ -185,16 +197,17 @@ void loadSettings(fs::FS &fs) {
             s->alarmOnMinute = (int) split(String((const char *) t["on"]), ':', 1).toInt();
             s->alarmOffHour = (int) split(String((const char *) t["off"]), ':', 0).toInt();
             s->alarmOffMinute = (int) split(String((const char *) t["off"]), ':', 1).toInt();
+            s->inverted = (bool) t["inverted"];
             alarms.add(s);
         };
 
         // load sensor settings
         JsonArray &sensorsJSON = root["sensors"];
         for (auto &s : sensorsJSON) {
-            Serial.print("Got new sensor ");
-            Serial.print((const char *) s["type"]);
-            Serial.print(" on pin ");
-            Serial.println((const char *) s["pin"]);
+            debug->print("Got new sensor ");
+            debug->print((const char *) s["type"]);
+            debug->print(" on pin ");
+            debug->println((const char *) s["pin"]);
             dht_pin = (uint8_t) s["pin"];
             if (strcmp((const char *) s["type"], "DHT22") == 0) {
                 dht_type = DHT22;
@@ -220,7 +233,7 @@ void loadSettings(fs::FS &fs) {
             pinMode(settings_rain.pin, OUTPUT);
             digitalWrite(settings_rain.pin, (uint8_t) settings_rain.inverted);
         } else {
-            Serial.println("No (valid) config for rain");
+            debug->println("No (valid) config for rain");
         }
 
         // load buttons
@@ -268,35 +281,35 @@ void loadSettings(fs::FS &fs) {
  * 
  *************************************/
 bool connectWiFi() {
-    Serial.print("Connecting to ");
-    Serial.println(ssid);
+    debug->print("Connecting to ");
+    debug->println(ssid);
     WiFi.begin(ssid.c_str(), password.c_str());
 
     int retries = 0;
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
-        Serial.print(".");
+        debug->print(".");
         if(retries++ > 10){
             return false;
         }
     }
 
-    Serial.println("");
-    Serial.println("WiFi connected");
-    Serial.println("IP address: ");
-    Serial.println(WiFi.localIP());
+    debug->println("");
+    debug->println("WiFi connected");
+    debug->println("IP address: ");
+    debug->println(WiFi.localIP());
 
     MDNS.begin(host.c_str());
     return true;
 }
 
 void createAP(){
-    Serial.println("Cannot connect to WiFi. Create Access Point");
+    debug->println("Cannot connect to WiFi. Create Access Point");
     WiFi.softAP(ap_ssid.c_str());
     ap_mode = true;
     IPAddress myIP = WiFi.softAPIP();
-    Serial.print("AP IP address: ");
-    Serial.println(myIP);
+    debug->print("AP IP address: ");
+    debug->println(myIP);
 }
 
 void initOTA(){
@@ -315,30 +328,33 @@ void initOTA(){
 
     ArduinoOTA.onStart([]() {
         String type;
-        if (ArduinoOTA.getCommand() == U_FLASH)
+        if (ArduinoOTA.getCommand() == U_FLASH){
             type = "sketch";
-        else // U_SPIFFS
+        }
+        else {
+            // U_SPIFFS
             type = "filesystem";
+        }
 
         // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-        Serial.println("Start updating " + type);
+        debug->println("Start updating " + type);
     });
     ArduinoOTA.onEnd([]() {
-        Serial.println("\nEnd");
+        debug->println("\nEnd");
     });
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-        Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+        debug->printf("Progress: %u%%\r", (progress / (total / 100)));
     });
     ArduinoOTA.onError([](ota_error_t error) {
-        Serial.printf("Error[%u]: ", error);
-        if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-        else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-        else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-        else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-        else if (error == OTA_END_ERROR) Serial.println("End Failed");
+        debug->printf("Error[%u]: ", error);
+        if (error == OTA_AUTH_ERROR) debug->println("Auth Failed");
+        else if (error == OTA_BEGIN_ERROR) debug->println("Begin Failed");
+        else if (error == OTA_CONNECT_ERROR) debug->println("Connect Failed");
+        else if (error == OTA_RECEIVE_ERROR) debug->println("Receive Failed");
+        else if (error == OTA_END_ERROR) debug->println("End Failed");
     });
     ArduinoOTA.begin();
-    Serial.println("OTA update ready");
+    debug->println("OTA update ready");
 }
 
 /**************************************
@@ -348,15 +364,15 @@ void initOTA(){
  *************************************/
 void handleRoot() {
     if (ESPTemplateProcessor(server).send(String("/base.html"), indexProcessor)) {
-        //Serial.println("SUCCESS");
+        //debug->println("SUCCESS");
     } else {
-        Serial.println("FAIL");
+        debug->println("FAIL");
         server.send(404, "text/plain", "page not found.");
     }
 }
 
 String indexProcessor(const String &key) {
-    //Serial.println(String("KEY IS ") + key);
+    //debug->println(String("KEY IS ") + key);
     if (key == "CONTENT") {
         File dataFile = SPIFFS.open("/home.html");
         return dataFile.readString();
@@ -374,7 +390,7 @@ void handleConfig() {
 void handleSensordata() {
     String json_temp = "[";
     String json_humid = "[";
-    //Serial.println(buffer_temp.numElements());
+    //debug->println(buffer_temp.numElements());
     for (size_t i = 0; i < buffer_temp.numElements(); i++) {
         json_temp += "[";
         json_temp += *buffer_time.peek(i);
@@ -425,17 +441,17 @@ void handleButtons(){
 }
 
 void handleButtonChange(){
-    Serial.println("Button changed");
+    debug->println("Button changed");
     String name = server.arg("name"); //root["name"];
     uint8_t value = server.arg("value").toInt();
-    Serial.print(name);
-    Serial.print(": ");
+    debug->print(name);
+    debug->print(": ");
     for(size_t i=0; i<buttons.size(); i++) {
         Button b = *buttons.get(i);
         if(name == b.name){
             switch(b.type){
                 case BTN_TOGGLE:
-                    Serial.println(value ^ b.inverted);
+                    debug->println(value ^ b.inverted);
                     digitalWrite(b.pin, value ^ b.inverted);
                     break;
                 case BTN_SLIDER:
@@ -462,9 +478,9 @@ String configProcessor(const String &key) {
 
 
 void handleConfigUpdate() {
-    Serial.println("Config Update");
-    Serial.println(server.args());
-    Serial.println(server.arg("data"));
+    debug->println("Config Update");
+    debug->println(server.args());
+    debug->println(server.arg("data"));
     File dataFile = SPIFFS.open("/config.json", "w");
     if (dataFile) {
         dataFile.print(server.arg("data"));
@@ -485,8 +501,8 @@ void handleFileUpload() {
     if (upload.status == UPLOAD_FILE_START) {
         String filename = upload.filename;
         if (!filename.startsWith("/")) filename = "/" + filename;
-        Serial.print("handleFileUpload Name: ");
-        Serial.println(filename);
+        debug->print("handleFileUpload Name: ");
+        debug->println(filename);
         fsUploadFile = SPIFFS.open(filename, "w");
         filename = String();
     } else if (upload.status == UPLOAD_FILE_WRITE) {
@@ -495,8 +511,8 @@ void handleFileUpload() {
     } else if (upload.status == UPLOAD_FILE_END) {
         if (fsUploadFile)
             fsUploadFile.close();
-        Serial.print("handleFileUpload Size: ");
-        Serial.println(upload.totalSize);
+        debug->print("handleFileUpload Size: ");
+        debug->println(upload.totalSize);
     }
 }
 
@@ -511,17 +527,17 @@ void timerCallback() {
     for (size_t i = 0; i < alarms.size(); i++) {
         AlarmSettings *a = alarms.get(i);
         if (a->alarmOnId == id) {
-            Serial.print("Timer ");
-            Serial.print(a->name);
-            Serial.println(" triggered");
-            digitalWrite(a->pin, HIGH);
+            debug->print("Timer ");
+            debug->print(a->name);
+            debug->println(" triggered");
+            digitalWrite(a->pin, a->inverted ? LOW : HIGH);
             break;
         }
         if (a->alarmOffId == id) {
-            Serial.print("Timer ");
-            Serial.print(a->name);
-            Serial.println(" triggered");
-            digitalWrite(a->pin, LOW);
+            debug->print("Timer ");
+            debug->print(a->name);
+            debug->println(" triggered");
+            digitalWrite(a->pin, a->inverted ? HIGH : LOW);
             break;
         }
     }
@@ -535,7 +551,7 @@ void timerCallback() {
  *************************************/
 bool initTimers() {
     if (timeStatus() != timeSet) {
-        Serial.println("Cannot init timers. Time not set");
+        debug->println("Cannot init timers. Time not set");
         return false;
     }
 
@@ -547,7 +563,7 @@ bool initTimers() {
 
     for (size_t i = 0; i < alarms.size(); i++) {
         AlarmSettings *a = alarms.get(i);
-        Serial.printf("Init timer %s on: %02d:%02d, off: %02d:%02d\n",
+        debug->printf("Init timer %s on: %02d:%02d, off: %02d:%02d\n",
         a->name.c_str(), a->alarmOnHour, a->alarmOnMinute, a->alarmOffHour, a->alarmOffMinute);
         pinMode(a->pin, OUTPUT);
         a->alarmOnId = Alarm.alarmRepeat(a->alarmOnHour, a->alarmOnMinute, 0, timerCallback);
@@ -558,7 +574,7 @@ bool initTimers() {
         unsigned int alarm_on = a->alarmOnHour * 60 + a->alarmOnMinute;
         unsigned int alarm_off = a->alarmOffHour * 60 + a->alarmOffMinute;
         if(alarm_on < time_min && time_min < alarm_off){
-            digitalWrite(a->pin, HIGH);
+            digitalWrite(a->pin, a->inverted ? LOW : HIGH);
         }
     }
 
@@ -573,18 +589,18 @@ bool initTimers() {
 time_t getNtpTime() {
     //configTime(-3600, -3600, "69.10.161.7");
 
-    Serial.print("Update time with GMT+");
-    Serial.print(settings_time.gmt_offset_sec);
-    Serial.print(" and DST: ");
-    Serial.println(settings_time.dst);
+    debug->print("Update time with GMT+");
+    debug->print(settings_time.gmt_offset_sec);
+    debug->print(" and DST: ");
+    debug->println(settings_time.dst);
 
     configTime(0, settings_time.dst ? 3600 : 0, "69.10.161.7");
     struct tm timeinfo;
     if (!getLocalTime(&timeinfo)) {
-        Serial.println("Failed to obtain time");
+        debug->println("Failed to obtain time");
     } else {
-        Serial.print("Synced time to: ");
-        Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+        debug->print("Synced time to: ");
+        debug->println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
     }
     return mktime(&timeinfo) + settings_time.gmt_offset_sec;
 }
@@ -597,19 +613,12 @@ time_t getNtpTime() {
 void readSensors() {
     if (dht_type != UNKNOWN) {
         time_t t;
-        float temp;
-        float humid;
-
-        // remove first buffer element if full
-        if (buffer_time.isFull()) {
-            buffer_time.pull(&t);
-            buffer_temp.pull(&temp);
-            buffer_humid.pull(&humid);
-        }
+        float temp = 0;
+        float humid = 0;
 
         // get new values (try up to 10 times if NaN or incorrect values)
         size_t i = 0;
-        while(i++ < 10){
+        for(; i<10; i++){
             t = now();
             int chk = -1;
             switch (dht_type){
@@ -634,52 +643,71 @@ void readSensors() {
             switch (chk)
             {
                 case DHTLIB_OK:
-                    Serial.print("OK,\t");
+                    debug->print("OK,\t");
                     break;
                 case DHTLIB_ERROR_CHECKSUM:
-                    Serial.print("Checksum error,\t");
+                    debug->print("Checksum error,\t");
                     break;
                 case DHTLIB_ERROR_TIMEOUT:
-                    Serial.print("Time out error,\t");
+                    debug->print("Time out error,\t");
                     break;
                 case DHTLIB_ERROR_CONNECT:
-                    Serial.print("Connect error,\t");
+                    debug->print("Connect error,\t");
                     break;
                 case DHTLIB_ERROR_ACK_L:
-                    Serial.print("Ack Low error,\t");
+                    debug->print("Ack Low error,\t");
                     break;
                 case DHTLIB_ERROR_ACK_H:
-                    Serial.print("Ack High error,\t");
+                    debug->print("Ack High error,\t");
                     break;
                 default:
-                    Serial.print("Unknown error,\t");
+                    debug->print("Unknown error,\t");
                     break;
             }
 
             // test for NaN values and filter incorrect values
             if (chk != DHTLIB_OK) {
-                if(i==10){
-                    Serial.println("Too many NaN values detected");
-                    return;
-                }
                 // delay time between reads > 2s
+                temp = humid = 0;
                 delay(2100);
                 continue;
             } else {
                 temp = dht.temperature;
                 humid = dht.humidity;
-                break;
+                // both 0 == wrong sensor?
+                if(temp == 0 && humid == 0){
+                    debug->println("Temperature and humidity = 0. Wrong sensor?");
+                    delay(2100);
+                    continue;
+                } else {
+                    break;
+                }
             }
         }
 
-        Serial.print(t);
-        Serial.print(" ");
-        Serial.print("Temperature: ");
-        Serial.print(temp);
-        Serial.print(" Humidity: ");
-        Serial.print(humid);
-        Serial.print(" try: ");
-        Serial.println(i);
+        if(temp == 0 && humid == 0){
+            debug->println("Too many NaN values detected");
+            return;
+        }
+
+        debug->print(t);
+        debug->print(" ");
+        debug->print("Temperature: ");
+        debug->print(temp);
+        debug->print(" Humidity: ");
+        debug->print(humid);
+        debug->print(" try: ");
+        debug->println(i);
+
+
+        // remove first buffer element if full
+        time_t tmp_t;
+        float  tmp_temp, tmp_humid;
+        if (buffer_time.isFull()) {
+            buffer_time.pull(&tmp_t);
+            buffer_temp.pull(&tmp_temp);
+            buffer_humid.pull(&tmp_humid);
+        }
 
         // add values to buffer
         buffer_time.add(t);
@@ -690,7 +718,7 @@ void readSensors() {
         if (settings_rain.initialized && humid < settings_rain.threshold) {
             String s = "Humidity is under threshold " + String(humid) + "<" + String(settings_rain.threshold);
             s += "\nstart rain for " + String(settings_rain.duration) + " seconds...";
-            Serial.println(s);
+            debug->println(s);
             letItRain();
         }
     }
@@ -703,7 +731,7 @@ void readSensors() {
  *************************************/
 void letItRain() {
     if (settings_rain.initialized) {
-        Serial.printf("Let it rain for %d seconds\n", settings_rain.duration);
+        debug->printf("Let it rain for %d seconds\n", settings_rain.duration);
         digitalWrite(settings_rain.pin, settings_rain.inverted ? LOW : HIGH);
         Alarm.timerOnce(settings_rain.duration, stopRain);
     }
@@ -711,7 +739,7 @@ void letItRain() {
 
 void stopRain() {
     if (settings_rain.initialized) {
-        Serial.println("Stopping rain...");
+        debug->println("Stopping rain...");
         digitalWrite(settings_rain.pin, settings_rain.inverted ? HIGH : LOW);
     }
 }
