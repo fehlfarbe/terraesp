@@ -17,7 +17,7 @@
 #include "dht.h"
 #include <RingBufHelpers.h>
 #include <RingBufCPP.h>
-#include "debug->h"
+#include "Debug.h"
 
 #include "datatypes.h"
 #include "utils.h"
@@ -47,7 +47,7 @@ WebServer server(80);
 File fsUploadFile;
 
 // Telnet
-Debug *debug = nullptr;
+Debug debug;
 WiFiServer telnetServer(23);
 WiFiClient telnetClient;
 
@@ -55,12 +55,11 @@ WiFiClient telnetClient;
 void setup() {
 
     // start debug output
-    debug = new Debug(0, telnetServer, telnetClient);
-    debug->begin(115200);
+    Serial.begin(115200);
 
     // init File system and show content
     if (!SPIFFS.begin(true)) {
-        debug->println("Failed to mount file system");
+        debug.println("Failed to mount file system");
         return;
     }
     listDir(SPIFFS, "/", 0);
@@ -110,26 +109,41 @@ void setup() {
         server.send(200, "text/json", "{\"time\": \"" + time + "\"}");
     });
     server.on("/stats.json", []() { // return current device time
-        server.send(200, "text/json", "{\"heap_free\": \"" + String(ESP.getFreeHeap()) + "\", "
+        server.send(200, "text/json", "{\"free_heap\": \"" + String(ESP.getFreeHeap()) + "\", "
                                       "\"chip_rev\" : \"" + ESP.getChipRevision() + "\", "
                                       "\"sdk\" : \"" + ESP.getSdkVersion() + "\", "
+                                      "\"wifi\" : \"" + WiFi.RSSI() + "\", "
                                       "\"cpu_freq\" : \"" + ESP.getCpuFreqMHz() + "\"}");
     });
 
+    server.serveStatic("/bootstrap.min.js", SPIFFS, "/bootstrap.min.js");
+    server.serveStatic("/bootstrap.min.css", SPIFFS, "/bootstrap.min.css");
+    server.serveStatic("/highcharts.js", SPIFFS, "/highcharts.js");
+    server.serveStatic("/highslide.config.js", SPIFFS, "/highslide.config.js");
+    server.serveStatic("/highslide.css", SPIFFS, "/highslide.css");
+    server.serveStatic("/highslide-full.min.js", SPIFFS, "/highslide-full.min.js");
+    server.serveStatic("/jquery-3.1.1.min.js", SPIFFS, "/jquery-3.1.1.min.js");
+    server.serveStatic("/popper.min.js", SPIFFS, "/popper.min.js");
+
 //    server.on("/bootstrap.min.js", []() {
-//        debug->println("BOOTSTRAP JS");
+//        debug.println("BOOTSTRAP JS");
 //        File dataFile = SPIFFS.open("/bootstrap.min.js");
 //        server.send(200, "text/json", dataFile.readString());
 //    });
 //    server.on("/bootstrap.min.css", []() {
-//        debug->println("BOOTSTRAP CSS START");
+//        debug.println("BOOTSTRAP CSS START");
 //        File dataFile = SPIFFS.open("/bootstrap.min.css");
 //        server.send(200, "text/json", dataFile.readString());
-//        debug->println("BOOTSTRAP CSS END");
+//        debug.println("BOOTSTRAP CSS END");
 //    });
 
     // init OTA update
     initOTA();
+
+    // init telnetServer
+    debug.setTelnet(&telnetServer, &telnetClient);
+    telnetServer.begin();
+    telnetServer.setNoDelay(true);
 
     // DEBUG: ADD RANDOM SENSOR VALUES
     //randomValues(720);
@@ -146,14 +160,24 @@ void loop() {
 
     // sync time
     if (timeStatus() == timeNotSet) {
-        debug->println("Waiting for synced time");
+        debug.println("Waiting for synced time");
     }
 
     // serve HTTP content
     server.handleClient();
 
+    // add new telnet Clients
     if (telnetServer.hasClient()) {
-        debug->println("Telnet Client");
+        if (!telnetClient || !telnetClient.connected()) {
+            if (telnetClient) {
+                telnetClient.stop();
+                debug.println("Telnet Client Stop");
+            }
+            telnetClient = telnetServer.available();
+            debug.println("New Telnet client");
+            telnetClient.flush();
+            telnetClient.println("Welcome to TerraESP");
+        }
     }
 
     // delay, handle alarms/sensors and so on
@@ -169,11 +193,11 @@ void loadSettings(fs::FS &fs) {
     File dataFile = fs.open("/config.json");
     String json = dataFile.readString();
     dataFile.close();
-    debug->println(json);
+    debug.println(json);
     DynamicJsonBuffer jsonBuffer;
     JsonObject &root = jsonBuffer.parseObject(json);
     if (!root.success()) {
-        debug->println("----- parseObject() for config.json failed -----");
+        debug.println("----- parseObject() for config.json failed -----");
         return;
     } else {
         // load wlan settings
@@ -183,7 +207,7 @@ void loadSettings(fs::FS &fs) {
             password = (const char *) wlanJSON["pass"];
             host = (const char *) wlanJSON["host"];
         } else {
-            debug->println("Cannon read WiFi config, ToDo: start access point");
+            debug.println("Cannon read WiFi config, ToDo: start access point");
             createAP();
         }
 
@@ -204,10 +228,10 @@ void loadSettings(fs::FS &fs) {
         // load sensor settings
         JsonArray &sensorsJSON = root["sensors"];
         for (auto &s : sensorsJSON) {
-            debug->print("Got new sensor ");
-            debug->print((const char *) s["type"]);
-            debug->print(" on pin ");
-            debug->println((const char *) s["pin"]);
+            debug.print("Got new sensor ");
+            debug.print((const char *) s["type"]);
+            debug.print(" on pin ");
+            debug.println((const char *) s["pin"]);
             dht_pin = (uint8_t) s["pin"];
             if (strcmp((const char *) s["type"], "DHT22") == 0) {
                 dht_type = DHT22;
@@ -233,7 +257,7 @@ void loadSettings(fs::FS &fs) {
             pinMode(settings_rain.pin, OUTPUT);
             digitalWrite(settings_rain.pin, (uint8_t) settings_rain.inverted);
         } else {
-            debug->println("No (valid) config for rain");
+            debug.println("No (valid) config for rain");
         }
 
         // load buttons
@@ -281,35 +305,35 @@ void loadSettings(fs::FS &fs) {
  * 
  *************************************/
 bool connectWiFi() {
-    debug->print("Connecting to ");
-    debug->println(ssid);
+    debug.print("Connecting to ");
+    debug.println(ssid);
     WiFi.begin(ssid.c_str(), password.c_str());
 
     int retries = 0;
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
-        debug->print(".");
+        debug.print(".");
         if(retries++ > 10){
             return false;
         }
     }
 
-    debug->println("");
-    debug->println("WiFi connected");
-    debug->println("IP address: ");
-    debug->println(WiFi.localIP());
+    debug.println("");
+    debug.println("WiFi connected");
+    debug.println("IP address: ");
+    debug.println(WiFi.localIP());
 
     MDNS.begin(host.c_str());
     return true;
 }
 
 void createAP(){
-    debug->println("Cannot connect to WiFi. Create Access Point");
+    debug.println("Cannot connect to WiFi. Create Access Point");
     WiFi.softAP(ap_ssid.c_str());
     ap_mode = true;
     IPAddress myIP = WiFi.softAPIP();
-    debug->print("AP IP address: ");
-    debug->println(myIP);
+    debug.print("AP IP address: ");
+    debug.println(myIP);
 }
 
 void initOTA(){
@@ -337,24 +361,24 @@ void initOTA(){
         }
 
         // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-        debug->println("Start updating " + type);
+        debug.println("Start updating " + type);
     });
     ArduinoOTA.onEnd([]() {
-        debug->println("\nEnd");
+        debug.println("\nEnd");
     });
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-        debug->printf("Progress: %u%%\r", (progress / (total / 100)));
+        debug.printf("Progress: %u%%\r", (progress / (total / 100)));
     });
     ArduinoOTA.onError([](ota_error_t error) {
-        debug->printf("Error[%u]: ", error);
-        if (error == OTA_AUTH_ERROR) debug->println("Auth Failed");
-        else if (error == OTA_BEGIN_ERROR) debug->println("Begin Failed");
-        else if (error == OTA_CONNECT_ERROR) debug->println("Connect Failed");
-        else if (error == OTA_RECEIVE_ERROR) debug->println("Receive Failed");
-        else if (error == OTA_END_ERROR) debug->println("End Failed");
+        debug.printf("Error[%u]: ", error);
+        if (error == OTA_AUTH_ERROR) debug.println("Auth Failed");
+        else if (error == OTA_BEGIN_ERROR) debug.println("Begin Failed");
+        else if (error == OTA_CONNECT_ERROR) debug.println("Connect Failed");
+        else if (error == OTA_RECEIVE_ERROR) debug.println("Receive Failed");
+        else if (error == OTA_END_ERROR) debug.println("End Failed");
     });
     ArduinoOTA.begin();
-    debug->println("OTA update ready");
+    debug.println("OTA update ready");
 }
 
 /**************************************
@@ -364,15 +388,15 @@ void initOTA(){
  *************************************/
 void handleRoot() {
     if (ESPTemplateProcessor(server).send(String("/base.html"), indexProcessor)) {
-        //debug->println("SUCCESS");
+        //debug.println("SUCCESS");
     } else {
-        debug->println("FAIL");
+        debug.println("FAIL");
         server.send(404, "text/plain", "page not found.");
     }
 }
 
 String indexProcessor(const String &key) {
-    //debug->println(String("KEY IS ") + key);
+    //debug.println(String("KEY IS ") + key);
     if (key == "CONTENT") {
         File dataFile = SPIFFS.open("/home.html");
         return dataFile.readString();
@@ -390,7 +414,7 @@ void handleConfig() {
 void handleSensordata() {
     String json_temp = "[";
     String json_humid = "[";
-    //debug->println(buffer_temp.numElements());
+    //debug.println(buffer_temp.numElements());
     for (size_t i = 0; i < buffer_temp.numElements(); i++) {
         json_temp += "[";
         json_temp += *buffer_time.peek(i);
@@ -441,17 +465,17 @@ void handleButtons(){
 }
 
 void handleButtonChange(){
-    debug->println("Button changed");
+    debug.println("Button changed");
     String name = server.arg("name"); //root["name"];
     uint8_t value = server.arg("value").toInt();
-    debug->print(name);
-    debug->print(": ");
+    debug.print(name);
+    debug.print(": ");
     for(size_t i=0; i<buttons.size(); i++) {
         Button b = *buttons.get(i);
         if(name == b.name){
             switch(b.type){
                 case BTN_TOGGLE:
-                    debug->println(value ^ b.inverted);
+                    debug.println(value ^ b.inverted);
                     digitalWrite(b.pin, value ^ b.inverted);
                     break;
                 case BTN_SLIDER:
@@ -478,9 +502,9 @@ String configProcessor(const String &key) {
 
 
 void handleConfigUpdate() {
-    debug->println("Config Update");
-    debug->println(server.args());
-    debug->println(server.arg("data"));
+    debug.println("Config Update");
+    debug.println(server.args());
+    debug.println(server.arg("data"));
     File dataFile = SPIFFS.open("/config.json", "w");
     if (dataFile) {
         dataFile.print(server.arg("data"));
@@ -501,8 +525,8 @@ void handleFileUpload() {
     if (upload.status == UPLOAD_FILE_START) {
         String filename = upload.filename;
         if (!filename.startsWith("/")) filename = "/" + filename;
-        debug->print("handleFileUpload Name: ");
-        debug->println(filename);
+        debug.print("handleFileUpload Name: ");
+        debug.println(filename);
         fsUploadFile = SPIFFS.open(filename, "w");
         filename = String();
     } else if (upload.status == UPLOAD_FILE_WRITE) {
@@ -511,8 +535,8 @@ void handleFileUpload() {
     } else if (upload.status == UPLOAD_FILE_END) {
         if (fsUploadFile)
             fsUploadFile.close();
-        debug->print("handleFileUpload Size: ");
-        debug->println(upload.totalSize);
+        debug.print("handleFileUpload Size: ");
+        debug.println(upload.totalSize);
     }
 }
 
@@ -527,16 +551,16 @@ void timerCallback() {
     for (size_t i = 0; i < alarms.size(); i++) {
         AlarmSettings *a = alarms.get(i);
         if (a->alarmOnId == id) {
-            debug->print("Timer ");
-            debug->print(a->name);
-            debug->println(" triggered");
+            debug.print("Timer ");
+            debug.print(a->name);
+            debug.println(" triggered");
             digitalWrite(a->pin, a->inverted ? LOW : HIGH);
             break;
         }
         if (a->alarmOffId == id) {
-            debug->print("Timer ");
-            debug->print(a->name);
-            debug->println(" triggered");
+            debug.print("Timer ");
+            debug.print(a->name);
+            debug.println(" triggered");
             digitalWrite(a->pin, a->inverted ? HIGH : LOW);
             break;
         }
@@ -551,7 +575,7 @@ void timerCallback() {
  *************************************/
 bool initTimers() {
     if (timeStatus() != timeSet) {
-        debug->println("Cannot init timers. Time not set");
+        debug.println("Cannot init timers. Time not set");
         return false;
     }
 
@@ -563,7 +587,7 @@ bool initTimers() {
 
     for (size_t i = 0; i < alarms.size(); i++) {
         AlarmSettings *a = alarms.get(i);
-        debug->printf("Init timer %s on: %02d:%02d, off: %02d:%02d\n",
+        debug.printf("Init timer %s on: %02d:%02d, off: %02d:%02d\n",
         a->name.c_str(), a->alarmOnHour, a->alarmOnMinute, a->alarmOffHour, a->alarmOffMinute);
         pinMode(a->pin, OUTPUT);
         a->alarmOnId = Alarm.alarmRepeat(a->alarmOnHour, a->alarmOnMinute, 0, timerCallback);
@@ -589,18 +613,16 @@ bool initTimers() {
 time_t getNtpTime() {
     //configTime(-3600, -3600, "69.10.161.7");
 
-    debug->print("Update time with GMT+");
-    debug->print(settings_time.gmt_offset_sec);
-    debug->print(" and DST: ");
-    debug->println(settings_time.dst);
+    debug.printf("Update time with GMT+%02d and DST: %d\n",
+                 settings_time.gmt_offset_sec/3600, settings_time.dst);
 
     configTime(0, settings_time.dst ? 3600 : 0, "69.10.161.7");
     struct tm timeinfo;
     if (!getLocalTime(&timeinfo)) {
-        debug->println("Failed to obtain time");
+        debug.println("Failed to obtain time");
     } else {
-        debug->print("Synced time to: ");
-        debug->println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+        debug.print("Synced time to: ");
+        debug.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
     }
     return mktime(&timeinfo) + settings_time.gmt_offset_sec;
 }
@@ -643,25 +665,25 @@ void readSensors() {
             switch (chk)
             {
                 case DHTLIB_OK:
-                    debug->print("OK,\t");
+                    debug.print("OK,\t");
                     break;
                 case DHTLIB_ERROR_CHECKSUM:
-                    debug->print("Checksum error,\t");
+                    debug.print("Checksum error,\t");
                     break;
                 case DHTLIB_ERROR_TIMEOUT:
-                    debug->print("Time out error,\t");
+                    debug.print("Time out error,\t");
                     break;
                 case DHTLIB_ERROR_CONNECT:
-                    debug->print("Connect error,\t");
+                    debug.print("Connect error,\t");
                     break;
                 case DHTLIB_ERROR_ACK_L:
-                    debug->print("Ack Low error,\t");
+                    debug.print("Ack Low error,\t");
                     break;
                 case DHTLIB_ERROR_ACK_H:
-                    debug->print("Ack High error,\t");
+                    debug.print("Ack High error,\t");
                     break;
                 default:
-                    debug->print("Unknown error,\t");
+                    debug.print("Unknown error,\t");
                     break;
             }
 
@@ -669,15 +691,15 @@ void readSensors() {
             if (chk != DHTLIB_OK) {
                 // delay time between reads > 2s
                 temp = humid = 0;
-                delay(2100);
+                Alarm.delay(2100);
                 continue;
             } else {
                 temp = dht.temperature;
                 humid = dht.humidity;
                 // both 0 == wrong sensor?
-                if(temp == 0 && humid == 0){
-                    debug->println("Temperature and humidity = 0. Wrong sensor?");
-                    delay(2100);
+                if(temp == 0.f && humid == 0.f){
+                    debug.println("Temperature and humidity = 0. Wrong sensor?");
+                    Alarm.delay(2100);
                     continue;
                 } else {
                     break;
@@ -686,19 +708,12 @@ void readSensors() {
         }
 
         if(temp == 0 && humid == 0){
-            debug->println("Too many NaN values detected");
+            debug.println("Too many NaN/0.0 values detected");
             return;
         }
 
-        debug->print(t);
-        debug->print(" ");
-        debug->print("Temperature: ");
-        debug->print(temp);
-        debug->print(" Humidity: ");
-        debug->print(humid);
-        debug->print(" try: ");
-        debug->println(i);
-
+        debug.printf("%d: temperature: %.2f, humidity: %.2f, try: %d\n",
+        t, temp, humid, i);
 
         // remove first buffer element if full
         time_t tmp_t;
@@ -716,9 +731,8 @@ void readSensors() {
 
         // activate rain
         if (settings_rain.initialized && humid < settings_rain.threshold) {
-            String s = "Humidity is under threshold " + String(humid) + "<" + String(settings_rain.threshold);
-            s += "\nstart rain for " + String(settings_rain.duration) + " seconds...";
-            debug->println(s);
+            debug.printf("Humidity is under threshold of (%.2f < %.2f). Start rain for %d seconds\n",
+                          humid, settings_rain.threshold, settings_rain.duration);
             letItRain();
         }
     }
@@ -731,7 +745,7 @@ void readSensors() {
  *************************************/
 void letItRain() {
     if (settings_rain.initialized) {
-        debug->printf("Let it rain for %d seconds\n", settings_rain.duration);
+        debug.printf("Let it rain for %d seconds\n", settings_rain.duration);
         digitalWrite(settings_rain.pin, settings_rain.inverted ? LOW : HIGH);
         Alarm.timerOnce(settings_rain.duration, stopRain);
     }
@@ -739,7 +753,7 @@ void letItRain() {
 
 void stopRain() {
     if (settings_rain.initialized) {
-        debug->println("Stopping rain...");
+        debug.println("Stopping rain...");
         digitalWrite(settings_rain.pin, settings_rain.inverted ? HIGH : LOW);
     }
 }

@@ -4,27 +4,23 @@
 
 #include "Debug.h"
 
-Debug::Debug(int uart_nr, WiFiServer& server, WiFiClient& client) : HardwareSerial(uart_nr) {
-    telnetServer = server;
-    telnetClient = client;
-    telnetServer.begin();
-    telnetServer.setNoDelay(true);
+Debug::Debug() {
+
 }
 
+Debug::Debug(WiFiServer* server, WiFiClient* client) {
+    setTelnet(server, client);
+}
 
-#if ARDUINO >= 100
+void Debug::setTelnet(WiFiServer* server, WiFiClient* client){
+    telnetServer = server;
+    telnetClient = client;
+}
+
 size_t Debug::write(uint8_t c){
-    HardwareSerial::write(c);
-    if (telnetClient && telnetClient.connected()){
-        telnetServer.write(c);
+    Serial.write(c);
+    if (telnetClient && telnetClient->connected()){
+        telnetClient->write(c);
     }
     return 1;
 }
-#else
-void Debug::write(uint8_t c){
-    HardwareSerial.write(c);
-    if (telnetClient && telnetClient.connected()){
-        telnetServer.write(c);
-    }
-}
-#endif

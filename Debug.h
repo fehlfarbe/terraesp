@@ -14,20 +14,40 @@
 #include <WiFi.h>
 
 
-class Debug : public HardwareSerial {
+class Debug : public Stream {
 
 public:
-    Debug(int uart_nr, WiFiServer& server, WiFiClient& client);
+    Debug();
+    Debug(WiFiServer* server, WiFiClient* client);
 
-#if ARDUINO >= 100
-    size_t write(uint8_t byte);
-#else
-    void write(uint8_t byte);
-#endif
+    void setTelnet(WiFiServer* server, WiFiClient* client);
+
+    virtual int available(void){
+        return Serial.available();
+    };
+    virtual int peek(void){
+        return Serial.peek();
+    };
+    virtual int read(void){
+        return Serial.read();
+    };
+    virtual int availableForWrite(void){
+        return 0;
+    };
+    virtual void flush(void){
+        return;
+    };
+    virtual size_t write(uint8_t);
+    using Print::write; // pull in write(str) and write(buf, size) from Print
+//#if ARDUINO >= 100
+//    size_t write(uint8_t byte);
+//#else
+//    void write(uint8_t byte);
+//#endif
 
 private:
-    WiFiServer telnetServer;
-    WiFiClient telnetClient;
+    WiFiServer* telnetServer = nullptr;
+    WiFiClient* telnetClient = nullptr;
 };
 
 
