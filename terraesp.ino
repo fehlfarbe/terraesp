@@ -285,7 +285,8 @@ void loadSettings(fs::FS &fs) {
                     // ledcSetup(uint8_t channel, uint32_t freq, uint8_t resolution_bits);
                     btn->channel = channel;
                     ledcAttachPin(btn->pin, channel); // assign RGB led pins to channels
-                    ledcSetup(channel++, 12000, 8); // 12 kHz PWM, 8-bit resolution
+                    ledcSetup(channel, 12000, 8); // 12 kHz PWM, 8-bit resolution
+                    channel++;
                     break;
                 default:
                     break;
@@ -465,11 +466,9 @@ void handleButtons(){
 }
 
 void handleButtonChange(){
-    debug.println("Button changed");
     String name = server.arg("name"); //root["name"];
     uint8_t value = server.arg("value").toInt();
-    debug.print(name);
-    debug.print(": ");
+    debug.printf("Button changed: %s -> %d\n", name.c_str(), value);
     for(size_t i=0; i<buttons.size(); i++) {
         Button b = *buttons.get(i);
         if(name == b.name){
@@ -481,6 +480,7 @@ void handleButtonChange(){
                 case BTN_SLIDER:
                     if(value <= b.max && value >= b.min){
                         //analogWrite(b.pin, value);
+                        debug.printf("Change PWM on channel %d to value: %d\n", b.channel, value);
                         ledcWrite(b.channel, value);
                     }
                     break;

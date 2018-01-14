@@ -67,6 +67,6 @@ struct Button {
     ButtonType type;
     bool inverted = false;
     int min = 0;
-    int max = 0;
+    int max = 255;
     uint8_t channel = 0;
 };
