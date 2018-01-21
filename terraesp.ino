@@ -269,8 +269,8 @@ void loadSettings(fs::FS &fs) {
             btn->pin = (uint8_t) b["pin"];
             btn->type = strcmp(b["type"], "toggle") ? BTN_SLIDER : BTN_TOGGLE;
             btn->inverted = (bool) b["inverted"];
-            btn->min = (int) b["min"];
-            btn->max = (int) b["max"];
+            //btn->min = (int) b["min"];
+            //btn->max = (int) b["max"];
             buttons.add(btn);
 
             // set pin mode
@@ -456,7 +456,7 @@ void handleButtons(){
             case BTN_SLIDER:
                 btn["min"] = b.min;
                 btn["max"] = b.max;
-                btn["state"] = ledcRead(b.pin);
+                btn["state"] = ledcRead(b.channel);
                 break;
         }
     }
@@ -505,16 +505,23 @@ void handleConfigUpdate() {
     debug.println("Config Update");
     debug.println(server.args());
     debug.println(server.arg("data"));
-    File dataFile = SPIFFS.open("/config.json", "w");
-    if (dataFile) {
-        dataFile.print(server.arg("data"));
-        dataFile.close();
-        server.send(200, "text/plain", "ok");
-        Alarm.delay(100);
-        // restart to read clean values
-        ESP.restart();
+    DynamicJsonBuffer jsonBuffer;
+    JsonObject &root = jsonBuffer.parseObject(server.arg("data"));
+    if(root.success()){
+        File dataFile = SPIFFS.open("/config.json", "w");
+        if (dataFile) {
+            dataFile.print(server.arg("data"));
+            dataFile.close();
+            server.send(200, "text/plain", "ok");
+            Alarm.delay(100);
+            // restart to read clean values
+            ESP.restart();
+        } else {
+            server.send(503, "text/plain", "file error");
+        }
     } else {
-        server.send(503, "text/plain", "file error");
+        debug.println("JSON config not valid");
+        server.send(503, "text/plain", "invalid JSON data");
     }
 
 }

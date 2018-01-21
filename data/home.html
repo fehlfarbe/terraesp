@@ -22,6 +22,33 @@
         });
     }
 
+    function loadChartData(options){
+        // Load data asynchronously using jQuery. On success, add the data
+        // to the options and initiate the chart.
+        // This data is obtained by exporting a GA custom report to TSV.
+        // http://api.jquery.com/jQuery.get/
+        jQuery.get("/sensordata.json", function (json) {
+            console.log("got sensordata", json);
+            // inconsistency
+            //if (typeof json !== 'string') {
+            //    json = xhr.responseText;
+            //}
+            //json = JSON.parse(json);
+            // convert seconds to milliseconds
+            for (var i = 0; i < json["temperature"].length; i++) {
+                json["temperature"][i][0] *= 1000;
+                json["humid"][i][0] *= 1000;
+            }
+            options.series[0].data = json["temperature"];
+            options.series[1].data = json["humid"];
+            options.yAxis.plotLines[0].value = json["humid_level"];
+
+            setTimeout(loadChartData, 60000, options);
+
+            return new Highcharts.Chart(options);
+        });
+    }
+
     $(function () {
         var chart;
         $(document).ready(function () {
@@ -107,27 +134,8 @@
                     $("#buttons").append("</div>");
                 });
 
-                // Load data asynchronously using jQuery. On success, add the data
-                // to the options and initiate the chart.
-                // This data is obtained by exporting a GA custom report to TSV.
-                // http://api.jquery.com/jQuery.get/
-                jQuery.get("/sensordata.json", function (json) {
-                    console.log("got sensordata", json);
-                    // inconsistency
-                    //if (typeof json !== 'string') {
-                    //    json = xhr.responseText;
-                    //}
-                    //json = JSON.parse(json);
-                    // convert seconds to milliseconds
-                    for (var i = 0; i < json["temperature"].length; i++) {
-                        json["temperature"][i][0] *= 1000;
-                        json["humid"][i][0] *= 1000;
-                    }
-                    options.series[0].data = json["temperature"];
-                    options.series[1].data = json["humid"];
-                    options.yAxis.plotLines[0].value = json["humid_level"];
-                    chart = new Highcharts.Chart(options);
-                });
+                // load sensordata
+                chart = loadChartData(options);
             });
         });
     });
