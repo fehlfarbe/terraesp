@@ -1,0 +1,480 @@
+<script type="text/javascript">
+$(function () {
+    function updatetime() {
+        jQuery.get("/time", function(json) {
+            console.log("got time", json);
+            $("#time").html(new Date(json.time * 1e3).toISOString().slice(-13, -8));
+        });
+    }
+
+    function updateConfig() {
+        console.log("update config");
+        var container = $("#config");
+        var json = {};
+
+        // wlan
+        json["wlan"] = {};
+        json["wlan"]["ssid"] = $("#wlan_ssid").val();
+        json["wlan"]["pass"] = $("#wlan_pass").val();
+        json["wlan"]["host"] = $("#wlan_host").val();
+
+        // general
+        json["general"] = {};
+        json["general"]["dst"] = $("#general_dst").prop("checked");
+        json["general"]["gmt_offset"] = parseInt($("#general_gmt_offset").val());
+
+        // timer
+        json["timer"] = [];
+        for(var i=0; i<3; i++) {
+            var j = i+1;
+            var tmp = {};
+            if(tmp["name"] = $("#timer"+j+"_name").val() === "")
+                break;
+            tmp["name"] = $("#timer"+j+"_name").val();
+            tmp["pin"] = parseInt($("#timer"+j+"_pin").val());
+            tmp["on"] = $("#timer"+j+"_on").val();
+            tmp["off"] = $("#timer"+j+"_off").val();
+            tmp["inverted"] = $("#timer"+j+"_inverted").prop("checked");
+            json["timer"].push(tmp);
+        }
+
+        // sensors
+        json["sensors"] = [];
+        for(var i=0; i<1; i++){
+            var j = i+1;
+            var tmp = {};
+            tmp["type"] = $("#sensors"+j+"_type").val();
+            tmp["pin"] = parseInt($("#sensors"+j+"_pin").val());
+            json["sensors"].push(tmp);
+        }
+
+        // rain
+        json["rain"] = {};
+        json["rain"]["pin"] = parseInt($("#rain_pin").val());
+        json["rain"]["duration"] = parseInt($("#rain_duration").val());
+        json["rain"]["threshold"] = parseInt($("#rain_threshold").val());
+        json["rain"]["inverted"] = $("#rain_inverted").prop("checked");
+
+        // buttons
+        json["buttons"] = [];
+        for(var i=0; i<6; i++){
+            var j = i+1;
+            var tmp = {};
+            if(tmp["name"] = $("#button"+j+"_name").val() === "")
+                break;
+            tmp["name"] = $("#button"+j+"_name").val();
+            tmp["pin"] = parseInt($("#button"+j+"_pin").val());
+            tmp["type"] = $("#button"+j+"_type").val();
+            tmp["inverted"] = $("#button"+j+"_inverted").prop("checked");
+            json["buttons"].push(tmp);
+        }
+
+        container.val(JSON.stringify(json, null, 2));
+    }
+
+    $(document).ready(function() {
+        // disbale all inputs until old config is loaded
+        $("#config_container :input").attr("disabled", true);
+        jQuery.get("/config.json", function(json) {
+            console.log("got config", json);
+            //$("#config").val(JSON.stringify(json, null, 2));
+
+            // wlan
+            $("#wlan_ssid").val(json["wlan"]["ssid"]);
+            $("#wlan_pass").val(json["wlan"]["pass"]);
+            $("#wlan_host").val(json["wlan"]["host"]);
+
+            // DST
+            $("#general_dst").prop("checked", json["general"]["dst"]);
+            $("#general_gmt_offset").val(json["general"]["gmt_offset"]);
+
+            // timer
+            for(var i=0; i<json["timer"].length; i++) {
+                var j = i+1;
+                $("#timer"+j+"_name").val(json["timer"][i]["name"]);
+                $("#timer"+j+"_pin").val(json["timer"][i]["pin"]);
+                $("#timer"+j+"_on").val(json["timer"][i]["on"]);
+                $("#timer"+j+"_off").val(json["timer"][i]["off"]);
+                $("#timer"+j+"_inverted").prop("checked", json["timer"][i]["inverted"]);
+            }
+
+            // sensors
+            for(var i=0; i<json["sensors"].length; i++) {
+                var j = i+1;
+                $("#sensors"+j+"_type").val(json["sensors"][i]["type"]);
+                $("#sensors"+j+"_pin").val(json["sensors"][i]["pin"]);
+            }
+
+            // rain
+            $("#rain_pin").val(json["rain"]["pin"]);
+            $("#rain_duration").val(json["rain"]["duration"]);
+            $("#rain_threshold").val(json["rain"]["threshold"]);
+            $("#rain_inverted").prop("checked", json["rain"]["inverted"]);
+
+            // buttons
+            for(var i=0; i<json["buttons"].length; i++) {
+                var j = i+1;
+                $("#button"+j+"_name").val(json["buttons"][i]["name"]);
+                $("#button"+j+"_pin").val(json["buttons"][i]["pin"]);
+                $("#button"+j+"_type").val(json["buttons"][i]["type"]);
+                $("#button"+j+"_inverted").prop("checked", json["buttons"][i]["inverted"]);
+            }
+
+            $("#config_form :input").change(updateConfig);
+            updateConfig();
+
+            $("#config_container :input").attr("disabled", false);
+        });
+
+        jQuery.get("/stats.json", function(json) {
+            console.log("got stats", json);
+            jQuery.each(json, function(i, val) {
+                $("#stats_content").append("<p>" + i + ": " + val + "</p>");
+            });
+            //$("#stats_content").html(JSON.stringify(json, null, 2));
+        });
+
+        updatetime();
+        
+        $('#update_config').on({
+            'click': function() {
+                try {
+                    console.log($('#config').val());
+                    JSON.parse($('#config').val());
+                } catch (e) {
+                    alert ("JSON format wrong!");
+                    return false;
+                }
+
+
+                // POST JSON config
+                $.post( "/config/update", { 'data' : $('#config').val() }, function( data ) {
+                    console.log(data);
+                }).done(function(s) {
+                    // disable inputs
+                    $("#config_container :input").attr("disabled", true);
+                    // show message
+                    alert("Save config, will reboot and reload website...");
+                    window.setInterval(function() {
+                        $.ajax({
+                            cache: false,
+                            type: 'GET',
+                            url: '/time',
+                            timeout: 1000,
+                            success: function(data, textStatus, XMLHttpRequest) {
+                                console.log(data);
+                                if(data !== ""){
+                                    location.reload();
+                                }
+                            }
+                        })
+
+                    }, 2000);
+                    location.reload();
+                })
+                .fail(function(e) {
+                    alert("error " +e);
+                });
+            }
+        });
+        
+    });
+});
+</script>
+
+
+<h1>Config</h1>
+
+<div id="config_container">
+  <div id="config_fields"></div>
+
+  <div class="form-group">
+
+    <form id="config_form">
+      <h2>WiFi</h2>
+      <div class="form-group">
+        <label for="wlan_ssid">SSID</label>
+        <input type="text" class="form-control" id="wlan_ssid" placeholder="WLAN SSID"></div>
+      <div class="form-group">
+        <label for="wlan_pass">Password</label>
+        <input type="password" class="form-control" id="wlan_pass" placeholder="Password">
+      </div>
+      <div class="form-group">
+        <label for="wlan_host">Hostname</label>
+        <input type="text" class="form-control" id="wlan_host" placeholder="Hostname">
+      </div>
+
+      <h2>General</h2>
+      <div class="form-group">
+        <label for="general_dst">Daylight saving time</label>
+        <input type="checkbox" class="form-control" id="general_dst" placeholder="DST">
+      </div>
+      <div class="form-group">
+        <label for="general_gmt_offset">Timezone (GMT offset in seconds)</label>
+        <input type="text" class="form-control" id="general_gmt_offset" placeholder="GMT offset in seconds">
+      </div>
+
+      <h2>Timer</h2>
+      <h3>Timer 1:</h3>
+      <div class="form-row">
+        <div class="col">
+          <label for="timer1_name">Name</label>
+          <input type="text" class="form-control" placeholder="Name" id="timer1_name">
+        </div>
+        <div class="col">
+          <label for="timer1_pin">Pin</label>
+          <input type="text" class="form-control" placeholder="Pin #" id="timer1_pin">
+        </div>
+        <div class="col">
+          <label for="timer1_on">Start (format: hh:mm)</label>
+          <input type="text" class="form-control" placeholder="Start hh:mm" id="timer1_on">
+        </div>
+        <div class="col">
+          <label for="timer1_off">Stop (format: hh:mm)</label>
+          <input type="text" class="form-control" placeholder="Stop hh:mm" id="timer1_off">
+        </div>
+        <div class="col">
+          <label for="timer1_inverted">Pin inverted</label>
+          <input type="checkbox" class="form-control" placeholder="Inverted" id="timer1_inverted">
+        </div>
+      </div>
+
+      <h3>Timer 2:</h3>
+      <div class="form-row">
+        <div class="col">
+          <label for="timer2_name">Name</label>
+          <input type="text" class="form-control" placeholder="Name" id="timer2_name">
+        </div>
+        <div class="col">
+          <label for="timer2_pin">Pin</label>
+          <input type="text" class="form-control" placeholder="Pin #" id="timer2_pin">
+        </div>
+        <div class="col">
+          <label for="timer2_on">Start (format: hh:mm)</label>
+          <input type="text" class="form-control" placeholder="Start hh:mm" id="timer2_on">
+        </div>
+        <div class="col">
+          <label for="timer2_off">Stop (format: hh:mm)</label>
+          <input type="text" class="form-control" placeholder="Stop hh:mm" id="timer2_off">
+        </div>
+        <div class="col">
+          <label for="timer2_inverted">Pin inverted</label>
+          <input type="checkbox" class="form-control" placeholder="Inverted" id="timer2_inverted">
+        </div>
+      </div>
+
+      <h3>Timer 3:</h3>
+      <div class="form-row">
+        <div class="col">
+          <label for="timer3_name">Name</label>
+          <input type="text" class="form-control" placeholder="Name" id="timer3_name">
+        </div>
+        <div class="col">
+          <label for="timer3_pin">Pin</label>
+          <input type="text" class="form-control" placeholder="Pin #" id="timer3_pin">
+        </div>
+        <div class="col">
+          <label for="timer3_on">Start (format: hh:mm)</label>
+          <input type="text" class="form-control" placeholder="Start hh:mm" id="timer3_on">
+        </div>
+        <div class="col">
+          <label for="timer3_off">Stop (format: hh:mm)</label>
+          <input type="text" class="form-control" placeholder="Stop hh:mm" id="timer3_off">
+        </div>
+        <div class="col">
+          <label for="timer3_inverted">Pin inverted</label>
+          <input type="checkbox" class="form-control" placeholder="Inverted" id="timer3_inverted">
+        </div>
+      </div>
+
+      <h2>Sensors</h2>
+      <div class="form-row">
+        <div class="col">
+          <label for="sensors1_type">Sensor type</label>
+          <select id="sensors1_type" class="form-control">
+            <option selected value="AM2301">AM2301</option>
+            <option value="AM2302">AM2302</option>
+            <option value="DHT21">DHT21</option>
+            <option value="DHT22">DHT22</option>
+            <option value="DHT11">DHT11</option>
+          </select>
+        </div>
+        <div class="col">
+          <label for="sensors1_pin">Pin</label>
+          <input type="text" class="form-control" placeholder="pin" id="sensors1_pin">
+        </div>
+      </div>
+
+      <h2>Rain</h2>
+      <div class="form-row">
+        <div class="col">
+          <label for="rain_pin">Pin</label>
+          <input type="text" class="form-control" placeholder="Pin" id="rain_pin">
+        </div>
+        <div class="col">
+          <label for="rain_duration">Duration in seconds</label>
+          <input type="text" class="form-control" placeholder="Duration" id="rain_duration">
+        </div>
+        <div class="col">
+          <label for="rain_threshold">Humidity threshold</label>
+          <input type="text" class="form-control" placeholder="Humidity threshold" id="rain_threshold">
+        </div>
+        <div class="col">
+          <label for="rain_inverted">Pin inverted</label>
+          <input type="checkbox" class="form-control" placeholder="Inverted" id="rain_inverted">
+        </div>
+      </div>
+
+      <h2>Buttons</h2>
+      <h3>Button 1:</h3>
+      <div class="form-row">
+        <div class="col">
+          <label for="button1_name">Name</label>
+          <input type="text" class="form-control" placeholder="Name" id="button1_name">
+        </div>
+        <div class="col">
+          <label for="button1_pin">Pin</label>
+          <input type="text" class="form-control" placeholder="Pin #" id="button1_pin">
+        </div>
+        <div class="col">
+          <label for="button1_type">Button type</label>
+          <select id="button1_type" class="form-control">
+            <option selected value="toggle">Button</option>
+            <option value="scroll">Slider</option>
+          </select>
+        </div>
+        <div class="col">
+          <label for="button1_inverted">Pin inverted</label>
+          <input type="checkbox" class="form-control" placeholder="Inverted" id="button1_inverted">
+        </div>
+      </div>
+
+      <h3>Button 2:</h3>
+      <div class="form-row">
+        <div class="col">
+          <label for="button2_name">Name</label>
+          <input type="text" class="form-control" placeholder="Name" id="button2_name">
+        </div>
+        <div class="col">
+          <label for="button2_pin">Pin</label>
+          <input type="text" class="form-control" placeholder="Pin #" id="button2_pin">
+        </div>
+        <div class="col">
+          <label for="button2_type">Button type</label>
+          <select id="button2_type" class="form-control">
+            <option selected value="toggle">Button</option>
+            <option value="scroll">Slider</option>
+          </select>
+        </div>
+        <div class="col">
+          <label for="button2_inverted">Pin inverted</label>
+          <input type="checkbox" class="form-control" placeholder="Inverted" id="button2_inverted">
+        </div>
+      </div>
+
+      <h3>Button 3:</h3>
+      <div class="form-row">
+        <div class="col">
+          <label for="button3_name">Name</label>
+          <input type="text" class="form-control" placeholder="Name" id="button3_name">
+        </div>
+        <div class="col">
+          <label for="button3_pin">Pin</label>
+          <input type="text" class="form-control" placeholder="Pin #" id="button3_pin">
+        </div>
+        <div class="col">
+          <label for="button3_type">Button type</label>
+          <select id="button3_type" class="form-control">
+            <option selected value="toggle">Button</option>
+            <option value="scroll">Slider</option>
+          </select>
+        </div>
+        <div class="col">
+          <label for="button3_inverted">Pin inverted</label>
+          <input type="checkbox" class="form-control" placeholder="Inverted" id="button3_inverted">
+        </div>
+      </div>
+
+      <h3>Button 4:</h3>
+      <div class="form-row">
+        <div class="col">
+          <label for="button4_name">Name</label>
+          <input type="text" class="form-control" placeholder="Name" id="button4_name">
+        </div>
+        <div class="col">
+          <label for="button4_pin">Pin</label>
+          <input type="text" class="form-control" placeholder="Pin #" id="button4_pin">
+        </div>
+        <div class="col">
+          <label for="button4_type">Button type</label>
+          <select id="button4_type" class="form-control">
+            <option selected value="toggle">Button</option>
+            <option value="scroll">Slider</option>
+          </select>
+        </div>
+        <div class="col">
+          <label for="button4_inverted">Pin inverted</label>
+          <input type="checkbox" class="form-control" placeholder="Inverted" id="button4_inverted">
+        </div>
+      </div>
+
+      <h3>Button 5:</h3>
+      <div class="form-row">
+        <div class="col">
+          <label for="button5_name">Name</label>
+          <input type="text" class="form-control" placeholder="Name" id="button5_name">
+        </div>
+        <div class="col">
+          <label for="button5_pin">Pin</label>
+          <input type="text" class="form-control" placeholder="Pin #" id="button5_pin">
+        </div>
+        <div class="col">
+          <label for="button5_type">Button type</label>
+          <select id="button5_type" class="form-control">
+            <option selected value="toggle">Button</option>
+            <option value="scroll">Slider</option>
+          </select>
+        </div>
+        <div class="col">
+          <label for="button5_inverted">Pin inverted</label>
+          <input type="checkbox" class="form-control" placeholder="Inverted" id="button5_inverted">
+        </div>
+      </div>
+
+      <h3>Button 6:</h3>
+      <div class="form-row">
+        <div class="col">
+          <label for="button6_name">Name</label>
+          <input type="text" class="form-control" placeholder="Name" id="button6_name">
+        </div>
+        <div class="col">
+          <label for="button6_pin">Pin</label>
+          <input type="text" class="form-control" placeholder="Pin #" id="button6_pin">
+        </div>
+        <div class="col">
+          <label for="button6_type">Button type</label>
+          <select id="button6_type" class="form-control">
+            <option selected value="button">Button</option>
+            <option value="scroll">Slider</option>
+          </select>
+        </div>
+        <div class="col">
+          <label for="button6_inverted">Pin inverted</label>
+          <input type="checkbox" class="form-control" placeholder="Inverted" id="button6_inverted">
+        </div>
+      </div>
+
+      <!--<button type="submit" class="btn btn-primary">Udapte config </button>-->
+    </form>
+
+    <label for="config">JSON Config:</label>
+    <textarea class="form-control" rows="35" id="config"></textarea>
+  </div>
+  <button id="update_config" type="button" class="btn btn-primary btn-block">Update config and restart</button>
+</div>
+
+<div id="stats" style="margin-top: 10px;">
+  <h2>Stats:</h2>
+  <div id="stats_content"></div>
+  <span id="time"></span>
+</div>
