@@ -32,6 +32,8 @@ TimeSettings settings_time;
 RainSettings settings_rain;
 LinkedList<Button*> buttons;
 LinkedList<AlarmSettings*> alarms;
+String basic_auth_user = "";
+String basic_auth_pass = "";
 
 // sensors
 //DHT *dht = nullptr;
@@ -61,6 +63,7 @@ void readSensors();
 time_t getNtpTime();
 bool initTimers();
 void timerCallback();
+bool checkAuth();
 void handleFileUpload();
 void handleConfigUpdate();
 void handleButtonChange();
@@ -119,6 +122,8 @@ void setup() {
     server.on("/config", handleConfig);
     server.on("/config/update", HTTP_POST, handleConfigUpdate);
     server.on("/config.json", []() {
+        if(!checkAuth())
+            return server.requestAuthentication();
         File dataFile = SPIFFS.open("/config.json");
         // remove WiFi password for security reasons
         DynamicJsonBuffer jsonBuffer;
@@ -134,6 +139,8 @@ void setup() {
     server.on("/buttons.json", handleButtons);
     server.on("/button/change", HTTP_POST, handleButtonChange);
     server.on("/reboot", []() {
+        if(!checkAuth())
+            return server.requestAuthentication();
         server.send(200, "text/json", "{\"answer\": \"ok\"}");
         Alarm.delay(100);
         ESP.restart();
@@ -143,6 +150,8 @@ void setup() {
         server.send(200, "text/json", "{\"time\": \"" + time + "\"}");
     });
     server.on("/stats.json", []() { // return current device time
+        if(!checkAuth())
+            return server.requestAuthentication();
         server.send(200, "text/json", "{\"free_heap\": \"" + String(ESP.getFreeHeap()) + "\", "
                                       "\"chip_rev\" : \"" + ESP.getChipRevision() + "\", "
                                       "\"sdk\" : \"" + ESP.getSdkVersion() + "\", "
@@ -241,10 +250,19 @@ void loadSettings(fs::FS &fs) {
             password = (const char *) wlanJSON["pass"];
             host = (const char *) wlanJSON["host"];
         } else {
-            debug.println("Cannon read WiFi config, ToDo: start access point");
+            debug.println("Cannot read WiFi config. Start access point");
             createAP();
         }
 
+        // load basic auth settings
+        JsonObject &basicAuthJSON = root["basic_auth"];
+        if (basicAuthJSON.success()) {
+            basic_auth_user = (const char *) basicAuthJSON["user"];
+            basic_auth_pass = (const char *) basicAuthJSON["pass"];
+        } else {
+            debug.println("Cannot read basic auth config");
+            createAP();
+        }
         // load timer settings
         JsonArray &timerJSON = root["timer"];
         for (auto &t : timerJSON) {
@@ -422,6 +440,8 @@ void initOTA(){
  * 
  *************************************/
 void handleRoot() {
+    if(!checkAuth())
+        return server.requestAuthentication();
     if (ESPTemplateProcessor(server).send(String("/base.html"), indexProcessor)) {
         //debug.println("SUCCESS");
     } else {
@@ -440,6 +460,8 @@ String indexProcessor(const String &key) {
 }
 
 void handleConfig() {
+    if(!checkAuth())
+        return server.requestAuthentication();
     if (ESPTemplateProcessor(server).send(String("/base.html"), configProcessor)) {
     } else {
         server.send(404, "text/plain", "page not found.");
@@ -447,6 +469,8 @@ void handleConfig() {
 }
 
 void handleSensordata() {
+    if(!checkAuth())
+        return server.requestAuthentication();
     String json_temp = "[";
     String json_humid = "[";
     //debug.println(buffer_temp.numElements());
@@ -475,6 +499,8 @@ void handleSensordata() {
 }
 
 void handleButtons(){
+    if(!checkAuth())
+        return server.requestAuthentication();
     DynamicJsonBuffer jsonBuffer;
     JsonArray& root = jsonBuffer.createArray();
     for(size_t i=0; i<buttons.size(); i++){
@@ -500,6 +526,8 @@ void handleButtons(){
 }
 
 void handleButtonChange(){
+    if(!checkAuth())
+        return server.requestAuthentication();
     String name = server.arg("name"); //root["name"];
     uint8_t value = server.arg("value").toInt();
     debug.printf("Button changed: %s -> %d\n", name.c_str(), value);
@@ -536,6 +564,8 @@ String configProcessor(const String &key) {
 
 
 void handleConfigUpdate() {
+    if(!checkAuth())
+        return server.requestAuthentication();
     debug.println("Config Update");
     debug.println(server.args());
     debug.println(server.arg("data"));
@@ -568,6 +598,8 @@ void handleConfigUpdate() {
 }
 
 void handleFileUpload() {
+    if(!checkAuth())
+        return server.requestAuthentication();
     if (server.uri() != "/edit") return;
     HTTPUpload &upload = server.upload();
     if (upload.status == UPLOAD_FILE_START) {
@@ -586,6 +618,28 @@ void handleFileUpload() {
         debug.print("handleFileUpload Size: ");
         debug.println(upload.totalSize);
     }
+}
+
+/**************************************
+ * 
+ * check basic auth if user and password is set
+ * 
+ *************************************/
+bool checkAuth(){
+    debug.println("Checking basic auth...");
+    if(basic_auth_user.length() == 0 || basic_auth_user.length() == 0){
+        debug.println("No user:pass set");
+        return true;
+    }
+    char* user = new char[basic_auth_user.length()];
+    char* pass = new char[basic_auth_pass.length()];
+    basic_auth_user.toCharArray(user, basic_auth_user.length());
+    basic_auth_pass.toCharArray(pass, basic_auth_pass.length());
+    debug.printf("Checking %s%s\n", user, pass);
+    bool auth = server.authenticate(user, pass);
+    delete user;
+    delete pass;
+    return auth;
 }
 
 /**************************************

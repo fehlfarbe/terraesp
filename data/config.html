@@ -18,6 +18,11 @@ $(function () {
         json["wlan"]["pass"] = $("#wlan_pass").val();
         json["wlan"]["host"] = $("#wlan_host").val();
 
+        // basic auth
+        json["basic_auth"] = {};
+        json["basic_auth"]["user"] = $("#basic_auth_user").val();
+        json["basic_auth"]["pass"] = $("#basic_auth_pass").val();
+
         // general
         json["general"] = {};
         json["general"]["dst"] = $("#general_dst").prop("checked");
@@ -202,6 +207,15 @@ $(function () {
       <div class="form-group">
         <label for="wlan_host">Hostname</label>
         <input type="text" class="form-control" id="wlan_host" placeholder="Hostname">
+      </div>
+
+      <h2>Basic Authentication</h2>
+      <div class="form-group">
+        <label for="basic_auth_user">User</label>
+        <input type="text" class="form-control" id="basic_auth_user" placeholder="username"></div>
+      <div class="form-group">
+        <label for="basic_auth_pass">Password</label>
+        <input type="password" class="form-control" id="basic_auth_pass" placeholder="Password">
       </div>
 
       <h2>General</h2>
