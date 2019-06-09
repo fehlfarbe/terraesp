@@ -50,9 +50,11 @@ enum DHTType {
 struct RainSettings {
     uint8_t pin;
     int duration;
+    int minGap = 600;
     float threshold;
     bool initialized = false;
     bool inverted = false;
+    long last_rain = 0;
 };
 
 enum ButtonType {

@@ -17,10 +17,14 @@
 #include <dht.h>
 #include <RingBufHelpers.h>
 #include <RingBufCPP.h>
+#include <WiFiManager.h>
 #include "Debug.h"
 
 #include "datatypes.h"
 #include "utils.h"
+
+// WiFi
+WiFiManager wifiManager;
 
 // settings
 String ssid = "";
@@ -32,8 +36,8 @@ TimeSettings settings_time;
 RainSettings settings_rain;
 LinkedList<Button*> buttons;
 LinkedList<AlarmSettings*> alarms;
-String basic_auth_user = "";
-String basic_auth_pass = "";
+// String basic_auth_user = "";
+// String basic_auth_pass = "";
 
 // sensors
 //DHT *dht = nullptr;
@@ -63,7 +67,6 @@ void readSensors();
 time_t getNtpTime();
 bool initTimers();
 void timerCallback();
-bool checkAuth();
 void handleFileUpload();
 void handleConfigUpdate();
 void handleButtonChange();
@@ -97,9 +100,10 @@ void setup() {
     loadSettings(SPIFFS);
 
     // WiFi and HTTP
-    if(!connectWiFi()){
-        createAP();
-    }
+    // if(!connectWiFi()){
+    //     createAP();
+    // }
+    wifiManager.autoConnect();
     server.begin();
 
     // sync time
@@ -122,8 +126,6 @@ void setup() {
     server.on("/config", handleConfig);
     server.on("/config/update", HTTP_POST, handleConfigUpdate);
     server.on("/config.json", []() {
-        if(!checkAuth())
-            return server.requestAuthentication();
         File dataFile = SPIFFS.open("/config.json");
         // remove WiFi password for security reasons
         DynamicJsonBuffer jsonBuffer;
@@ -139,8 +141,6 @@ void setup() {
     server.on("/buttons.json", handleButtons);
     server.on("/button/change", HTTP_POST, handleButtonChange);
     server.on("/reboot", []() {
-        if(!checkAuth())
-            return server.requestAuthentication();
         server.send(200, "text/json", "{\"answer\": \"ok\"}");
         Alarm.delay(100);
         ESP.restart();
@@ -150,8 +150,6 @@ void setup() {
         server.send(200, "text/json", "{\"time\": \"" + time + "\"}");
     });
     server.on("/stats.json", []() { // return current device time
-        if(!checkAuth())
-            return server.requestAuthentication();
         server.send(200, "text/json", "{\"free_heap\": \"" + String(ESP.getFreeHeap()) + "\", "
                                       "\"chip_rev\" : \"" + ESP.getChipRevision() + "\", "
                                       "\"sdk\" : \"" + ESP.getSdkVersion() + "\", "
@@ -255,14 +253,14 @@ void loadSettings(fs::FS &fs) {
         }
 
         // load basic auth settings
-        JsonObject &basicAuthJSON = root["basic_auth"];
-        if (basicAuthJSON.success()) {
-            basic_auth_user = (const char *) basicAuthJSON["user"];
-            basic_auth_pass = (const char *) basicAuthJSON["pass"];
-        } else {
-            debug.println("Cannot read basic auth config");
-            createAP();
-        }
+        // JsonObject &basicAuthJSON = root["basic_auth"];
+        // if (basicAuthJSON.success()) {
+        //     basic_auth_user = (const char *) basicAuthJSON["user"];
+        //     basic_auth_pass = (const char *) basicAuthJSON["pass"];
+        // } else {
+        //     debug.println("Cannot read basic auth config");
+        //     createAP();
+        // }
         // load timer settings
         JsonArray &timerJSON = root["timer"];
         for (auto &t : timerJSON) {
@@ -303,6 +301,7 @@ void loadSettings(fs::FS &fs) {
         if (rainJSON.success()) {
             settings_rain.pin = (uint8_t) rainJSON["pin"];
             settings_rain.duration = (int) rainJSON["duration"];
+            settings_rain.minGap = (int) rainJSON["min_gap"];
             settings_rain.threshold = (int) rainJSON["threshold"];
             settings_rain.initialized = true;
             settings_rain.inverted = (bool) rainJSON["inverted"];
@@ -440,8 +439,6 @@ void initOTA(){
  * 
  *************************************/
 void handleRoot() {
-    if(!checkAuth())
-        return server.requestAuthentication();
     if (ESPTemplateProcessor(server).send(String("/base.html"), indexProcessor)) {
         //debug.println("SUCCESS");
     } else {
@@ -460,8 +457,6 @@ String indexProcessor(const String &key) {
 }
 
 void handleConfig() {
-    if(!checkAuth())
-        return server.requestAuthentication();
     if (ESPTemplateProcessor(server).send(String("/base.html"), configProcessor)) {
     } else {
         server.send(404, "text/plain", "page not found.");
@@ -469,8 +464,6 @@ void handleConfig() {
 }
 
 void handleSensordata() {
-    if(!checkAuth())
-        return server.requestAuthentication();
     String json_temp = "[";
     String json_humid = "[";
     //debug.println(buffer_temp.numElements());
@@ -499,8 +492,6 @@ void handleSensordata() {
 }
 
 void handleButtons(){
-    if(!checkAuth())
-        return server.requestAuthentication();
     DynamicJsonBuffer jsonBuffer;
     JsonArray& root = jsonBuffer.createArray();
     for(size_t i=0; i<buttons.size(); i++){
@@ -526,8 +517,6 @@ void handleButtons(){
 }
 
 void handleButtonChange(){
-    if(!checkAuth())
-        return server.requestAuthentication();
     String name = server.arg("name"); //root["name"];
     uint8_t value = server.arg("value").toInt();
     debug.printf("Button changed: %s -> %d\n", name.c_str(), value);
@@ -564,8 +553,6 @@ String configProcessor(const String &key) {
 
 
 void handleConfigUpdate() {
-    if(!checkAuth())
-        return server.requestAuthentication();
     debug.println("Config Update");
     debug.println(server.args());
     debug.println(server.arg("data"));
@@ -597,50 +584,48 @@ void handleConfigUpdate() {
 
 }
 
-void handleFileUpload() {
-    if(!checkAuth())
-        return server.requestAuthentication();
-    if (server.uri() != "/edit") return;
-    HTTPUpload &upload = server.upload();
-    if (upload.status == UPLOAD_FILE_START) {
-        String filename = upload.filename;
-        if (!filename.startsWith("/")) filename = "/" + filename;
-        debug.print("handleFileUpload Name: ");
-        debug.println(filename);
-        fsUploadFile = SPIFFS.open(filename, "w");
-        filename = String();
-    } else if (upload.status == UPLOAD_FILE_WRITE) {
-        if (fsUploadFile)
-            fsUploadFile.write(upload.buf, upload.currentSize);
-    } else if (upload.status == UPLOAD_FILE_END) {
-        if (fsUploadFile)
-            fsUploadFile.close();
-        debug.print("handleFileUpload Size: ");
-        debug.println(upload.totalSize);
-    }
-}
+// void handleFileUpload() {
+//     if (server.uri() != "/edit") return;
+//     HTTPUpload &upload = server.upload();
+//     if (upload.status == UPLOAD_FILE_START) {
+//         String filename = upload.filename;
+//         if (!filename.startsWith("/")) filename = "/" + filename;
+//         debug.print("handleFileUpload Name: ");
+//         debug.println(filename);
+//         fsUploadFile = SPIFFS.open(filename, "w");
+//         filename = String();
+//     } else if (upload.status == UPLOAD_FILE_WRITE) {
+//         if (fsUploadFile)
+//             fsUploadFile.write(upload.buf, upload.currentSize);
+//     } else if (upload.status == UPLOAD_FILE_END) {
+//         if (fsUploadFile)
+//             fsUploadFile.close();
+//         debug.print("handleFileUpload Size: ");
+//         debug.println(upload.totalSize);
+//     }
+// }
 
 /**************************************
  * 
  * check basic auth if user and password is set
  * 
  *************************************/
-bool checkAuth(){
-    debug.println("Checking basic auth...");
-    if(basic_auth_user.length() == 0 || basic_auth_user.length() == 0){
-        debug.println("No user:pass set");
-        return true;
-    }
-    char* user = new char[basic_auth_user.length()];
-    char* pass = new char[basic_auth_pass.length()];
-    basic_auth_user.toCharArray(user, basic_auth_user.length());
-    basic_auth_pass.toCharArray(pass, basic_auth_pass.length());
-    debug.printf("Checking %s%s\n", user, pass);
-    bool auth = server.authenticate(user, pass);
-    delete user;
-    delete pass;
-    return auth;
-}
+// bool checkAuth(){
+//     debug.println("Checking basic auth...");
+//     if(basic_auth_user.length() == 0 || basic_auth_user.length() == 0){
+//         debug.println("No user:pass set");
+//         return true;
+//     }
+//     char* user = new char[basic_auth_user.length()];
+//     char* pass = new char[basic_auth_pass.length()];
+//     basic_auth_user.toCharArray(user, basic_auth_user.length());
+//     basic_auth_pass.toCharArray(pass, basic_auth_pass.length());
+//     debug.printf("Checking %s%s\n", user, pass);
+//     bool auth = server.authenticate(user, pass);
+//     delete user;
+//     delete pass;
+//     return auth;
+// }
 
 /**************************************
  * 
@@ -835,7 +820,13 @@ void readSensors() {
         if (settings_rain.initialized && humid < settings_rain.threshold) {
             debug.printf("Humidity is under threshold of (%.2f < %.2f). Start rain for %d seconds\n",
                           humid, settings_rain.threshold, settings_rain.duration);
-            letItRain();
+            if((millis() - settings_rain.last_rain) / 1000.0f > settings_rain.minGap){
+                letItRain();
+                settings_rain.last_rain = millis();
+            } else {
+                debug.printf("Rain gap of %ds prevents rain (have to wait for %ds)",
+                settings_rain.minGap, settings_rain.minGap - (millis() - settings_rain.last_rain));
+            }
         }
     }
 }
