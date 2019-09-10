@@ -12,13 +12,15 @@
 #include "SPIFFS.h"
 #include <ArduinoJson.h>
 #include <LinkedList.h>
-//#include <DHT.h>
-// use Rob Tillaart's DHTlib because of NaN errors in Adafruit lib
-#include <dht.h>
 #include <RingBufHelpers.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 #include <RingBufCPP.h>
 #include <WiFiManager.h>
 #include "Debug.h"
+//#include <DHT.h>
+// use Rob Tillaart's DHTlib because of NaN errors in Adafruit lib
+#include <dht.h>
 
 #include "datatypes.h"
 #include "utils.h"
