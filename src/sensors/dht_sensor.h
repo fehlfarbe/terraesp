@@ -1,3 +1,6 @@
+#ifndef DHT_SENSOR_H
+#define DHT_SENSOR_H
+
 #include "sensors.h"
 #include "datatypes.h"
 //#include <DHT.h>
@@ -23,3 +26,5 @@ class DHT11Sensor : public THSensor {
         float m_temperature = 0;
         float m_humidity = 0;
 };
+
+#endif

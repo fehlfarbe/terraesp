@@ -18,6 +18,15 @@
 #include <RingBufCPP.h>
 #include <WiFiManager.h>
 #include "Debug.h"
+
+#define MOCKUP_DATA
+
+// Buffer size for 24h / 5 minutes
+#define SENSORS_BUFSIZE 288
+#include "sensors/sensors.h"
+#include "sensors/analog_sensor.h"
+#include "sensors/dht_sensor.h"
+#include "sensors/sht31_sensor.h"
 //#include <DHT.h>
 // use Rob Tillaart's DHTlib because of NaN errors in Adafruit lib
 #include <dht.h>
@@ -38,17 +47,13 @@ TimeSettings settings_time;
 RainSettings settings_rain;
 LinkedList<Button*> buttons;
 LinkedList<AlarmSettings*> alarms;
-// String basic_auth_user = "";
-// String basic_auth_pass = "";
 
 // sensors
-//DHT *dht = nullptr;
-dht dht_sensor;
-DHTType dht_type = UNKNOWN;
-uint8_t dht_pin = 0;
+// dht dht_sensor;
+// DHTType dht_type = UNKNOWN;
+// uint8_t dht_pin = 0;
+LinkedList<THSensor*> sensors;
 RingBufCPP<time_t, 720> buffer_time;
-RingBufCPP<float, 720> buffer_temp;
-RingBufCPP<float, 720> buffer_humid;
 
 //WebServer
 WebServer server(80);
@@ -102,9 +107,7 @@ void setup() {
     loadSettings(SPIFFS);
 
     // WiFi and HTTP
-    // if(!connectWiFi()){
-    //     createAP();
-    // }
+    // @todo: activate only if jumper is set
     wifiManager.autoConnect();
     server.begin();
 
@@ -181,6 +184,7 @@ void setup() {
 //    });
 
     // init OTA update
+    // @todo: activate only if jumper is set
     initOTA();
 
     // init telnetServer
@@ -190,13 +194,22 @@ void setup() {
 
     // DEBUG: ADD RANDOM SENSOR VALUES
     //randomValues(720);
+#ifdef MOCKUP_DATA
+    for(size_t n=0; n<SENSORS_BUFSIZE; n++){
+        time_t t = now();
+        buffer_time.add(t, true);
+        for(size_t i=0; i<sensors.size(); i++){
+            sensors.get(i)->updateTH();
+        }
+    }
+#endif
 }
 
 void loop() {
     // check WiFi an reconnect if necessary
-    if (WiFi.status() != WL_CONNECTED and !ap_mode) {
-        connectWiFi();
-    }
+    // if (WiFi.status() != WL_CONNECTED and !ap_mode) {
+    //     connectWiFi();
+    // }
 
     // handle OTA updates
     ArduinoOTA.handle();
@@ -244,23 +257,13 @@ void loadSettings(fs::FS &fs) {
         return;
     } else {
         // load wlan settings
-        JsonObject &wlanJSON = root["wlan"];
-        if (wlanJSON.success()) {
-            ssid = (const char *) wlanJSON["ssid"];
-            password = (const char *) wlanJSON["pass"];
-            host = (const char *) wlanJSON["host"];
-        } else {
-            debug.println("Cannot read WiFi config. Start access point");
-            createAP();
-        }
-
-        // load basic auth settings
-        // JsonObject &basicAuthJSON = root["basic_auth"];
-        // if (basicAuthJSON.success()) {
-        //     basic_auth_user = (const char *) basicAuthJSON["user"];
-        //     basic_auth_pass = (const char *) basicAuthJSON["pass"];
+        // JsonObject &wlanJSON = root["wlan"];
+        // if (wlanJSON.success()) {
+        //     ssid = (const char *) wlanJSON["ssid"];
+        //     password = (const char *) wlanJSON["pass"];
+        //     host = (const char *) wlanJSON["host"];
         // } else {
-        //     debug.println("Cannot read basic auth config");
+        //     debug.println("Cannot read WiFi config. Start access point");
         //     createAP();
         // }
         // load timer settings
@@ -282,20 +285,37 @@ void loadSettings(fs::FS &fs) {
         for (auto &s : sensorsJSON) {
             debug.print("Got new sensor ");
             debug.print((const char *) s["type"]);
-            debug.print(" on pin ");
-            debug.println((const char *) s["pin"]);
-            dht_pin = (uint8_t) s["pin"];
-            if (strcmp((const char *) s["type"], "DHT22") == 0) {
-                dht_type = DHT22;
-            } else if (strcmp((const char *) s["type"], "AM2302") == 0) {
-                dht_type = AM2302;
-            } else if (strcmp((const char *) s["type"], "DHT21") == 0) {
-                dht_type = DHT21;
-            } else if (strcmp((const char *) s["type"], "DHT11") == 0) {
-                dht_type = DHT11;
-            } else if (strcmp((const char *) s["type"], "AM2301") == 0) {
-                dht_type = AM2301;
-            }
+            debug.print(" on pin/address ");
+            debug.print((const char *) s["pin"]);
+            debug.print(" ");
+            debug.println((const char *) s["address"]);
+            String type((const char*)s["type"]);
+            type.toLowerCase();
+            if (type.startsWith("dht")){
+                uint8_t dht_type = UNKNOWN;
+                if (type == "dht22") {
+                    dht_type = DHT22;
+                } else if (type ==  "am2302") {
+                    dht_type = AM2302;
+                } else if (type == "dht21") {
+                    dht_type = DHT21;
+                } else if (type == "dht11") {
+                    dht_type = DHT11;
+                } else if (type == "dht2301") {
+                    dht_type = AM2301;
+                }
+                if(dht_type != UNKNOWN){
+                    sensors.add(new DHT11Sensor(s["name"], s["pin"], dht_type));
+                }
+            } else if (type == "sht31"){
+                sensors.add(new SHT31Sensor(s["name"], s["address"]));
+            } else if (type == "analog_t"){
+                sensors.add(new AnalogSensor(s["name"], s["pin"], true, false));
+            } else if (type == "analog_h"){
+                sensors.add(new AnalogSensor(s["name"], s["pin"], false, true));
+            } else {
+                debug.println(" unknown");
+            }            
         }
 
         // load rain
@@ -466,31 +486,60 @@ void handleConfig() {
 }
 
 void handleSensordata() {
-    String json_temp = "[";
-    String json_humid = "[";
-    //debug.println(buffer_temp.numElements());
-    for (size_t i = 0; i < buffer_temp.numElements(); i++) {
-        json_temp += "[";
-        json_temp += *buffer_time.peek(i);
-        json_temp += ",";
-        json_temp += *buffer_temp.peek(i);
-        json_temp += "]";
-        json_humid += "[";
-        json_humid += *buffer_time.peek(i);
-        json_humid += ",";
-        json_humid += *buffer_humid.peek(i);
-        json_humid += "]";
-        if (i != buffer_temp.numElements() - 1) {
-            json_temp += ",";
-            json_humid += ",";
+    String json = "{ \"time\": [";
+    for(size_t i=0; i<buffer_time.numElements(); i++){
+        json += String(*buffer_time.peek(i)) + ",";
+    }
+    json += "], \"sensors\": [";
+
+
+    for (size_t i=0; i < sensors.size(); i++) {
+        THSensor *s = sensors.get(i);
+        json += "{";
+        json += "\"name\": \"" + s->getName() + "\",";
+        if(s->hasTemperature()){
+            json += "\"temperature\": [";
+            for(size_t j=0; j<s->buffer_t.numElements(); j++){
+                json += String(*s->buffer_t.peek(j)) + ",";
+            }
+            json += "],";
+        }
+        if(s->hasHumidity()){
+            json += "\"humidity\": [";
+            for(size_t j=0; j<s->buffer_h.numElements(); j++){
+                json += String(*s->buffer_h.peek(j)) + ",";
+            }
+            json += "],";
         }
     }
-    json_temp += "]";
-    json_humid += "]";
 
-    server.send(200, "text/json",
-                "{\"temperature\": " + json_temp + ",\"humid\": " + json_humid +
-                        ",\"humid_level\" : " + String(settings_rain.threshold) + "}");
+    json += "]}";
+
+
+    // String json_temp = "[";
+    // String json_humid = "[";
+
+    //debug.println(buffer_temp.numElements());
+    // for (size_t i = 0; i < buffer_temp.numElements(); i++) {
+    //     json_temp += "[";
+    //     json_temp += *buffer_time.peek(i);
+    //     json_temp += ",";
+    //     json_temp += *buffer_temp.peek(i);
+    //     json_temp += "]";
+    //     json_humid += "[";
+    //     json_humid += *buffer_time.peek(i);
+    //     json_humid += ",";
+    //     json_humid += *buffer_humid.peek(i);
+    //     json_humid += "]";
+    //     if (i != buffer_temp.numElements() - 1) {
+    //         json_temp += ",";
+    //         json_humid += ",";
+    //     }
+    // }
+    // json_temp += "]";
+    // json_humid += "]";
+
+    server.send(200, "text/json", json);
 }
 
 void handleButtons(){
@@ -722,115 +771,121 @@ time_t getNtpTime() {
  * 
  *************************************/
 void readSensors() {
-    if (dht_type != UNKNOWN) {
-        time_t t;
-        float temp = 0;
-        float humid = 0;
-
-        // get new values (try up to 10 times if NaN or incorrect values)
-        size_t i = 0;
-        for(; i<10; i++){
-            t = now();
-            int chk = -1;
-            switch (dht_type){
-                case DHT11:
-                    chk = dht_sensor.read11(dht_pin);
-                    break;
-                case DHT21:
-                    chk = dht_sensor.read21(dht_pin);
-                    break;
-                case DHT22:
-                    chk = dht_sensor.read22(dht_pin);
-                    break;
-                case AM2301:
-                    chk = dht_sensor.read2301(dht_pin);
-                    break;
-                case AM2302:
-                    chk = dht_sensor.read2302(dht_pin);
-                    break;
-                default:
-                    chk = -1;
-            }
-            switch (chk)
-            {
-                case DHTLIB_OK:
-                    debug.print("OK,\t");
-                    break;
-                case DHTLIB_ERROR_CHECKSUM:
-                    debug.print("Checksum error,\t");
-                    break;
-                case DHTLIB_ERROR_TIMEOUT:
-                    debug.print("Time out error,\t");
-                    break;
-                case DHTLIB_ERROR_CONNECT:
-                    debug.print("Connect error,\t");
-                    break;
-                case DHTLIB_ERROR_ACK_L:
-                    debug.print("Ack Low error,\t");
-                    break;
-                case DHTLIB_ERROR_ACK_H:
-                    debug.print("Ack High error,\t");
-                    break;
-                default:
-                    debug.print("Unknown error,\t");
-                    break;
-            }
-
-            // test for NaN values and filter incorrect values
-            if (chk != DHTLIB_OK) {
-                // delay time between reads > 2s
-                temp = humid = 0;
-                Alarm.delay(2100);
-                continue;
-            } else {
-                temp = dht_sensor.temperature;
-                humid = dht_sensor.humidity;
-                // both 0 == wrong sensor?
-                if(temp == 0.f && humid == 0.f){
-                    debug.println("Temperature and humidity = 0. Wrong sensor?");
-                    Alarm.delay(2100);
-                    continue;
-                } else {
-                    break;
-                }
-            }
-        }
-
-        if(temp == 0 && humid == 0){
-            debug.println("Too many NaN/0.0 values detected");
-            return;
-        }
-
-        debug.printf("%d: temperature: %.2f, humidity: %.2f, try: %d\n",
-        t, temp, humid, i);
-
-        // remove first buffer element if full
-        time_t tmp_t;
-        float  tmp_temp, tmp_humid;
-        if (buffer_time.isFull()) {
-            buffer_time.pull(&tmp_t);
-            buffer_temp.pull(&tmp_temp);
-            buffer_humid.pull(&tmp_humid);
-        }
-
-        // add values to buffer
-        buffer_time.add(t);
-        buffer_temp.add(temp);
-        buffer_humid.add(humid);
-
-        // activate rain
-        if (settings_rain.initialized && humid < settings_rain.threshold) {
-            debug.printf("Humidity is under threshold of (%.2f < %.2f). Start rain for %d seconds\n",
-                          humid, settings_rain.threshold, settings_rain.duration);
-            if((millis() - settings_rain.last_rain) / 1000.0f > settings_rain.minGap){
-                letItRain();
-                settings_rain.last_rain = millis();
-            } else {
-                debug.printf("Rain gap of %ds prevents rain (have to wait for %ds)",
-                settings_rain.minGap, settings_rain.minGap - (millis() - settings_rain.last_rain));
-            }
-        }
+    time_t t = now();
+    buffer_time.add(t, true);
+    for(size_t i=0; i<sensors.size(); i++){
+        sensors.get(i)->updateTH();
     }
+
+    // if (dht_type != UNKNOWN) {
+    //     time_t t;
+    //     float temp = 0;
+    //     float humid = 0;
+
+    //     // get new values (try up to 10 times if NaN or incorrect values)
+    //     size_t i = 0;
+    //     for(; i<10; i++){
+    //         t = now();
+    //         int chk = -1;
+    //         switch (dht_type){
+    //             case DHT11:
+    //                 chk = dht_sensor.read11(dht_pin);
+    //                 break;
+    //             case DHT21:
+    //                 chk = dht_sensor.read21(dht_pin);
+    //                 break;
+    //             case DHT22:
+    //                 chk = dht_sensor.read22(dht_pin);
+    //                 break;
+    //             case AM2301:
+    //                 chk = dht_sensor.read2301(dht_pin);
+    //                 break;
+    //             case AM2302:
+    //                 chk = dht_sensor.read2302(dht_pin);
+    //                 break;
+    //             default:
+    //                 chk = -1;
+    //         }
+    //         switch (chk)
+    //         {
+    //             case DHTLIB_OK:
+    //                 debug.print("OK,\t");
+    //                 break;
+    //             case DHTLIB_ERROR_CHECKSUM:
+    //                 debug.print("Checksum error,\t");
+    //                 break;
+    //             case DHTLIB_ERROR_TIMEOUT:
+    //                 debug.print("Time out error,\t");
+    //                 break;
+    //             case DHTLIB_ERROR_CONNECT:
+    //                 debug.print("Connect error,\t");
+    //                 break;
+    //             case DHTLIB_ERROR_ACK_L:
+    //                 debug.print("Ack Low error,\t");
+    //                 break;
+    //             case DHTLIB_ERROR_ACK_H:
+    //                 debug.print("Ack High error,\t");
+    //                 break;
+    //             default:
+    //                 debug.print("Unknown error,\t");
+    //                 break;
+    //         }
+
+    //         // test for NaN values and filter incorrect values
+    //         if (chk != DHTLIB_OK) {
+    //             // delay time between reads > 2s
+    //             temp = humid = 0;
+    //             Alarm.delay(2100);
+    //             continue;
+    //         } else {
+    //             temp = dht_sensor.temperature;
+    //             humid = dht_sensor.humidity;
+    //             // both 0 == wrong sensor?
+    //             if(temp == 0.f && humid == 0.f){
+    //                 debug.println("Temperature and humidity = 0. Wrong sensor?");
+    //                 Alarm.delay(2100);
+    //                 continue;
+    //             } else {
+    //                 break;
+    //             }
+    //         }
+    //     }
+
+    //     if(temp == 0 && humid == 0){
+    //         debug.println("Too many NaN/0.0 values detected");
+    //         return;
+    //     }
+
+    //     debug.printf("%d: temperature: %.2f, humidity: %.2f, try: %d\n",
+    //     t, temp, humid, i);
+
+    //     // remove first buffer element if full
+    //     time_t tmp_t;
+    //     float  tmp_temp, tmp_humid;
+    //     if (buffer_time.isFull()) {
+    //         buffer_time.pull(&tmp_t);
+    //         buffer_temp.pull(&tmp_temp);
+    //         buffer_humid.pull(&tmp_humid);
+    //     }
+
+    //     // add values to buffer
+    //     buffer_time.add(t);
+    //     buffer_temp.add(temp);
+    //     buffer_humid.add(humid);
+
+    //     // activate rain
+    //     if (settings_rain.initialized && humid < settings_rain.threshold) {
+    //         debug.printf("Humidity is under threshold of (%.2f < %.2f). Start rain for %d seconds\n",
+    //                       humid, settings_rain.threshold, settings_rain.duration);
+    //         if((millis() - settings_rain.last_rain) / 1000.0f > settings_rain.minGap){
+    //             letItRain();
+    //             settings_rain.last_rain = millis();
+    //         } else {
+    //             debug.printf("Rain gap of %ds prevents rain (have to wait for %ds)",
+    //             settings_rain.minGap, settings_rain.minGap - (millis() - settings_rain.last_rain));
+    //         }
+    //     }
+    // }
 }
 
 /**************************************
@@ -859,24 +914,24 @@ void stopRain() {
  *
  *************************************/
 void randomValues(size_t count) {
-    time_t t;
-    float temp;
-    float humid;
+    // time_t t;
+    // float temp;
+    // float humid;
 
-    for (size_t i = 0; i < count; i++) {
-        // remove first buffer element if full
-        if (buffer_time.isFull()) {
-            buffer_time.pull(&t);
-            buffer_temp.pull(&temp);
-            buffer_humid.pull(&humid);
-        }
+    // for (size_t i = 0; i < count; i++) {
+    //     // remove first buffer element if full
+    //     if (buffer_time.isFull()) {
+    //         buffer_time.pull(&t);
+    //         buffer_temp.pull(&temp);
+    //         buffer_humid.pull(&humid);
+    //     }
 
-        t = now() + i;
-        temp = humid = (float) i;
-        // add values to buffer
-        buffer_time.add(t);
-        buffer_temp.add(temp);
-        buffer_humid.add(humid);
-    }
+    //     t = now() + i;
+    //     temp = humid = (float) i;
+    //     // add values to buffer
+    //     buffer_time.add(t);
+    //     buffer_temp.add(temp);
+    //     buffer_humid.add(humid);
+    // }
 }
 

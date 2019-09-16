@@ -1,3 +1,6 @@
+#ifndef SHT31_SENSOR_H
+#define SHT31_SENSOR_H
+
 #include <Adafruit_SHT31.h>
 #include "sensors.h"
 
@@ -15,3 +18,5 @@ class SHT31Sensor : public THSensor {
     protected:
         Adafruit_SHT31 sensor;
 };
+
+#endif

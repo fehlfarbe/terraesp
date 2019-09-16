@@ -1,3 +1,6 @@
+#ifndef DATATYPES_H
+#define DATATYPES_H
+
 #include <TimeAlarms.h>
 
 struct AlarmSettings {
@@ -72,3 +75,5 @@ struct Button {
     int max = 255;
     uint8_t channel = 0;
 };
+
+#endif

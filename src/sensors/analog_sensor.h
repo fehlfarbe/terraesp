@@ -1,3 +1,6 @@
+#ifndef ANALOG_SENSOR_H
+#define ANALOG_SENSOR_H
+
 #include "sensors.h"
 
 
@@ -17,3 +20,5 @@ class AnalogSensor : public THSensor {
         bool m_humidity = false;
         bool m_temperature = false;
 };
+
+#endif
