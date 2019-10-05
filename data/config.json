@@ -12,8 +12,8 @@
         { "name" : "DHT Sensor", "type" : "AM2301", "pin" : 15, "enabled" : true},
         { "name" : "top", "type" : "SHT31", "address" : 68, "enabled" : true},
         { "name" : "bottom", "type" : "SHT31", "address" : 69, "enabled" : true},
-        { "name" : "soil", "type" : "analog_t", "pin" : 2, "enabled" : true},
-        { "name" : "soil", "type" : "analog_h", "pin" : 15, "enabled" : true}
+        { "name" : "soil", "type" : "analog_t", "pin" : 4, "enabled" : false},
+        { "name" : "soil", "type" : "analog_h", "pin" : 15, "enabled" : false}
         ],
     "rain" : {"pin" : 19, "duration" : 10, "threshold" : 45},
     "buttons" : [

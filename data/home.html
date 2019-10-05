@@ -1,7 +1,7 @@
 <!-- chart -->
 <script type="text/javascript">
     function onButtonChange(b){
-        console.log("Button changed", b);
+        console.log("Button/Slider changed", b);
         var btn = {};
         btn.type = b.type === "checkbox" ? 0 : 1;
         btn.name = b.getAttribute("id");
@@ -15,11 +15,19 @@
         $.post( "/button/change", btn, function( data ) {
             console.log(data);
         }).done(function(s) {
-            console.log("Erfolg!");
+            console.log("done");
         })
         .fail(function(e) {
             console.log("error ", e);
         });
+    }
+
+    function zip(arr1, arr2){
+        var res = []
+        for(var i=0; i<arr1.length; i++){
+            res.push([arr1[i], arr2[i]]);
+        }
+        return res
     }
 
     function loadChartData(options){
@@ -27,20 +35,41 @@
         // to the options and initiate the chart.
         // This data is obtained by exporting a GA custom report to TSV.
         // http://api.jquery.com/jQuery.get/
+        console.log("loading chart data...");
         jQuery.get("/sensordata.json", function (json) {
-            console.log("got sensordata", json);
+            console.log("got chart data:", json);
             // inconsistency
             //if (typeof json !== 'string') {
             //    json = xhr.responseText;
             //}
             //json = JSON.parse(json);
             // convert seconds to milliseconds
-            for (var i = 0; i < json["temperature"].length; i++) {
-                json["temperature"][i][0] *= 1000;
-                json["humid"][i][0] *= 1000;
-            }
-            options.series[0].data = json["temperature"];
-            options.series[1].data = json["humid"];
+
+            json.time.forEach(element => {
+                element *= 1000;
+            });
+            // for (var i = 0; i < json["temperature"].length; i++) {
+            //     json["temperature"][i][0] *= 1000;
+            //     json["humid"][i][0] *= 1000;
+            // }
+            json.sensors.forEach(s => {
+                if(s.hasOwnProperty("temperature")){
+                    console.log(zip(json.time, s.temperature));
+                    options.series.push({
+                        "data": zip(json.time, s.temperature),
+                        "name": s.name + " temperature",
+                        "color": "#ff0000"
+                    });
+                }
+                if(s.hasOwnProperty("humidity")){
+                    options.series.push({
+                        "data": zip(json.time, s.humidity),
+                        "name": s.name + " humidity",
+                        "color": "#0000ff"
+                    });
+                }
+            });
+            
             options.yAxis.plotLines[0].value = json["humid_level"];
 
             setTimeout(loadChartData, 60000, options);
@@ -95,20 +124,21 @@
                         lineWidth: 1.0
                     }
                 },
-                series: [{
-                    name: 'Temperature',
-                    color: '#ff0000',
-                    marker: {
-                        radius: 2
-                    }
-                },
-                    {
-                        name: 'Humid',
-                        color: '#0000ff',
-                        marker: {
-                            radius: 2
-                        }
-                    }]
+                series: [],
+                // series: [{
+                //     name: 'Temperature',
+                //     color: '#ff0000',
+                //     marker: {
+                //         radius: 2
+                //     }
+                // },
+                //     {
+                //         name: 'Humid',
+                //         color: '#0000ff',
+                //         marker: {
+                //             radius: 2
+                //         }
+                //     }]
             };
 
 
@@ -129,7 +159,7 @@
                         $("#buttons")
                             .append(b.name + " <input type='range' min='"+b.min+"' " +
                                 "max='"+b.max+"' value='"+b.state+"' id='"+b.name+"'" +
-                                "onchange='onButtonChange(this)'>");
+                                "oninput='onButtonChange(this)'>");
                     }
                     $("#buttons").append("</div>");
                 });

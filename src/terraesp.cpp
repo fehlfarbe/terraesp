@@ -4,6 +4,7 @@
 #include <ArduinoOTA.h>
 #include <HTTPClient.h>
 #include <WebServer.h>
+// #include <ESPAsyncWebServer.h>
 #include "ESPTemplateProcessor.h"
 #include <time.h>
 #include <Time.h>
@@ -20,6 +21,7 @@
 #include "Debug.h"
 
 #define MOCKUP_DATA
+#define LED_BUILTIN 2
 
 // Buffer size for 24h / 5 minutes
 #define SENSORS_BUFSIZE 288
@@ -53,7 +55,7 @@ LinkedList<AlarmSettings*> alarms;
 // DHTType dht_type = UNKNOWN;
 // uint8_t dht_pin = 0;
 LinkedList<THSensor*> sensors;
-RingBufCPP<time_t, 720> buffer_time;
+RingBufCPP<time_t, SENSORS_BUFSIZE> buffer_time;
 
 //WebServer
 WebServer server(80);
@@ -74,11 +76,15 @@ void readSensors();
 time_t getNtpTime();
 bool initTimers();
 void timerCallback();
+String getContentType(String filename);
+bool exists(String path);
+bool handleFileRead(String path);
 void handleFileUpload();
 void handleConfigUpdate();
 void handleButtonChange();
 void handleButtons();
 void handleSensordata();
+void handleSensors();
 void handleConfig();
 String configProcessor(const String &key);
 String indexProcessor(const String &key);
@@ -96,6 +102,11 @@ void setup() {
     // start debug output
     Serial.begin(115200);
 
+    // setup pins
+    pinMode(LED_BUILTIN, OUTPUT);
+    digitalWrite(LED_BUILTIN, HIGH);
+    digitalWrite(LED_BUILTIN, LOW);
+
     // init File system and show content
     if (!SPIFFS.begin(true)) {
         debug.println("Failed to mount file system");
@@ -108,6 +119,7 @@ void setup() {
 
     // WiFi and HTTP
     // @todo: activate only if jumper is set
+    wifiManager.setConnectTimeout(10);
     wifiManager.autoConnect();
     server.begin();
 
@@ -133,16 +145,27 @@ void setup() {
     server.on("/config.json", []() {
         File dataFile = SPIFFS.open("/config.json");
         // remove WiFi password for security reasons
-        DynamicJsonBuffer jsonBuffer;
-        JsonObject &root = jsonBuffer.parseObject(dataFile);
-        JsonObject &wlanJSON = root["wlan"];
+        DynamicJsonDocument doc(1024);
+        DeserializationError error = deserializeJson(doc, dataFile);
+        if (error){
+            return;
+        }
+        JsonObject wlanJSON = doc["wlan"];
         wlanJSON["pass"] = "";
         String json;
-        root.printTo(json);
+        serializeJson(doc, json);
         debug.println(json);
         server.send(200, "text/json", json);
     });
+
+    server.onNotFound([]() {
+        if (!handleFileRead(server.uri())) {
+        server.send(404, "text/plain", "FileNotFound");
+        }
+    });
+
     server.on("/sensordata.json", handleSensordata);
+    server.on("/sensors.json", handleSensors);
     server.on("/buttons.json", handleButtons);
     server.on("/button/change", HTTP_POST, handleButtonChange);
     server.on("/reboot", []() {
@@ -162,26 +185,17 @@ void setup() {
                                       "\"cpu_freq\" : \"" + ESP.getCpuFreqMHz() + "\"}");
     });
 
-    server.serveStatic("/bootstrap.min.js", SPIFFS, "/bootstrap.min.js");
-    server.serveStatic("/bootstrap.min.css", SPIFFS, "/bootstrap.min.css");
-    server.serveStatic("/highcharts.js", SPIFFS, "/highcharts.js");
-    server.serveStatic("/highslide.config.js", SPIFFS, "/highslide.config.js");
-    server.serveStatic("/highslide.css", SPIFFS, "/highslide.css");
-    server.serveStatic("/highslide-full.min.js", SPIFFS, "/highslide-full.min.js");
-    server.serveStatic("/jquery-3.1.1.min.js", SPIFFS, "/jquery-3.1.1.min.js");
-    server.serveStatic("/popper.min.js", SPIFFS, "/popper.min.js");
-
-//    server.on("/bootstrap.min.js", []() {
-//        debug.println("BOOTSTRAP JS");
-//        File dataFile = SPIFFS.open("/bootstrap.min.js");
-//        server.send(200, "text/json", dataFile.readString());
-//    });
-//    server.on("/bootstrap.min.css", []() {
-//        debug.println("BOOTSTRAP CSS START");
-//        File dataFile = SPIFFS.open("/bootstrap.min.css");
-//        server.send(200, "text/json", dataFile.readString());
-//        debug.println("BOOTSTRAP CSS END");
-//    });
+    // static files (CSS, JS, ...)
+    // server.serveStatic("/bootstrap.min.js", SPIFFS, "/bootstrap.min.js.gz");
+    // server.serveStatic("/bootstrap.min.js.map", SPIFFS, "/bootstrap.min.js.map.gz");
+    // server.serveStatic("/bootstrap.min.css", SPIFFS, "/bootstrap.min.css.gz");
+    // server.serveStatic("/bootstrap.min.css.map", SPIFFS, "/bootstrap.min.css.map.gz");
+    // server.serveStatic("/highcharts.js", SPIFFS, "/highcharts.js");
+    // server.serveStatic("/highslide.config.js", SPIFFS, "/highslide.config.js");
+    // server.serveStatic("/highslide.css", SPIFFS, "/highslide.css");
+    // server.serveStatic("/highslide-full.min.js", SPIFFS, "/highslide-full.min.js");
+    // server.serveStatic("/jquery-3.1.1.min.js", SPIFFS, "/jquery-3.1.1.min.js");
+    // server.serveStatic("/popper.min.js", SPIFFS, "/popper.min.js");
 
     // init OTA update
     // @todo: activate only if jumper is set
@@ -192,24 +206,39 @@ void setup() {
     telnetServer.begin();
     telnetServer.setNoDelay(true);
 
-    // DEBUG: ADD RANDOM SENSOR VALUES
-    //randomValues(720);
 #ifdef MOCKUP_DATA
+    debug.print("Creating mockup data...");
+    time_t t = now();
     for(size_t n=0; n<SENSORS_BUFSIZE; n++){
-        time_t t = now();
-        buffer_time.add(t, true);
+        buffer_time.add(t++, true);
         for(size_t i=0; i<sensors.size(); i++){
-            sensors.get(i)->updateTH();
+            THSensor *s = sensors.get(i);
+            if(s->isEnabled()){
+                sensors.get(i)->updateTH();
+                digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+            }
         }
     }
+    debug.println("done!");
 #endif
 }
 
 void loop() {
     // check WiFi an reconnect if necessary
     // if (WiFi.status() != WL_CONNECTED and !ap_mode) {
-    //     connectWiFi();
+    //     // connectWiFi();
+    //     digitalWrite(LED_BUILTIN, LOW);
+    // } else {
+    //     digitalWrite(LED_BUILTIN, HIGH);
     // }
+    if(WiFi.status() == WL_CONNECTED){
+        digitalWrite(LED_BUILTIN, HIGH);
+    } else {
+        debug.println(WiFi.status());
+        digitalWrite(LED_BUILTIN, LOW);
+    }
+
+    //debug.printf("WiFi state: %d\n", WiFi.status());
 
     // handle OTA updates
     ArduinoOTA.handle();
@@ -250,10 +279,11 @@ void loadSettings(fs::FS &fs) {
     String json = dataFile.readString();
     dataFile.close();
     debug.println(json);
-    DynamicJsonBuffer jsonBuffer;
-    JsonObject &root = jsonBuffer.parseObject(json);
-    if (!root.success()) {
+    DynamicJsonDocument doc(4096);
+    DeserializationError error = deserializeJson(doc, json);
+    if (error) {
         debug.println("----- parseObject() for config.json failed -----");
+        debug.println(error.c_str());
         return;
     } else {
         // load wlan settings
@@ -267,8 +297,8 @@ void loadSettings(fs::FS &fs) {
         //     createAP();
         // }
         // load timer settings
-        JsonArray &timerJSON = root["timer"];
-        for (auto &t : timerJSON) {
+        JsonArray timerJSON = doc["timer"];
+        for (auto t : timerJSON) {
             struct AlarmSettings *s = new struct AlarmSettings;
             s->name = (const char *) t["name"];
             s->pin = (uint8_t) t["pin"];
@@ -281,8 +311,8 @@ void loadSettings(fs::FS &fs) {
         };
 
         // load sensor settings
-        JsonArray &sensorsJSON = root["sensors"];
-        for (auto &s : sensorsJSON) {
+        JsonArray sensorsJSON = doc["sensors"];
+        for (auto s : sensorsJSON) {
             debug.print("Got new sensor ");
             debug.print((const char *) s["type"]);
             debug.print(" on pin/address ");
@@ -291,6 +321,7 @@ void loadSettings(fs::FS &fs) {
             debug.println((const char *) s["address"]);
             String type((const char*)s["type"]);
             type.toLowerCase();
+            THSensor *thsensor = nullptr;
             if (type.startsWith("dht")){
                 uint8_t dht_type = UNKNOWN;
                 if (type == "dht22") {
@@ -305,22 +336,29 @@ void loadSettings(fs::FS &fs) {
                     dht_type = AM2301;
                 }
                 if(dht_type != UNKNOWN){
-                    sensors.add(new DHT11Sensor(s["name"], s["pin"], dht_type));
+                    thsensor = new DHT11Sensor(s["name"], s["pin"], dht_type);
                 }
             } else if (type == "sht31"){
-                sensors.add(new SHT31Sensor(s["name"], s["address"]));
+                thsensor = new SHT31Sensor(s["name"], s["address"]);
             } else if (type == "analog_t"){
-                sensors.add(new AnalogSensor(s["name"], s["pin"], true, false));
+                thsensor = new AnalogSensor(s["name"], s["pin"], true, false);
             } else if (type == "analog_h"){
-                sensors.add(new AnalogSensor(s["name"], s["pin"], false, true));
+                thsensor = new AnalogSensor(s["name"], s["pin"], false, true);
             } else {
                 debug.println(" unknown");
-            }            
+            }
+
+            if(thsensor){
+                if(!s["enabled"].isNull()){
+                    thsensor->setEnabled(s["enabled"]);
+                }
+                sensors.add(thsensor);
+            }
         }
 
         // load rain
-        JsonObject &rainJSON = root["rain"];
-        if (rainJSON.success()) {
+        JsonObject rainJSON = doc["rain"];
+        if (!rainJSON.isNull()) {
             settings_rain.pin = (uint8_t) rainJSON["pin"];
             settings_rain.duration = (int) rainJSON["duration"];
             settings_rain.minGap = (int) rainJSON["min_gap"];
@@ -334,9 +372,9 @@ void loadSettings(fs::FS &fs) {
         }
 
         // load buttons
-        JsonArray &buttonsJSON = root["buttons"];
+        JsonArray buttonsJSON = doc["buttons"];
         uint8_t channel = 0;
-        for (auto &b : buttonsJSON) {
+        for (auto b : buttonsJSON) {
             Button *btn = new Button;
             btn->name = (const char *) b["name"];
             btn->pin = (uint8_t) b["pin"];
@@ -367,7 +405,7 @@ void loadSettings(fs::FS &fs) {
         }
 
         // general settings
-        JsonObject &generalJSON = root["general"];
+        JsonObject generalJSON = doc["general"];
         settings_time.dst = (bool)generalJSON["dst"]; // daylight saving time
         settings_time.gmt_offset_sec = (int)generalJSON["gmt_offset"]; // daylight saving time
     }
@@ -485,69 +523,136 @@ void handleConfig() {
     }
 }
 
+
+String getContentType(String filename) {
+  if (server.hasArg("download")) {
+    return "application/octet-stream";
+  } else if (filename.endsWith(".htm")) {
+    return "text/html";
+  } else if (filename.endsWith(".html")) {
+    return "text/html";
+  } else if (filename.endsWith(".css")) {
+    return "text/css";
+  } else if (filename.endsWith(".js")) {
+    return "application/javascript";
+  } else if (filename.endsWith(".png")) {
+    return "image/png";
+  } else if (filename.endsWith(".gif")) {
+    return "image/gif";
+  } else if (filename.endsWith(".jpg")) {
+    return "image/jpeg";
+  } else if (filename.endsWith(".ico")) {
+    return "image/x-icon";
+  } else if (filename.endsWith(".xml")) {
+    return "text/xml";
+  } else if (filename.endsWith(".pdf")) {
+    return "application/x-pdf";
+  } else if (filename.endsWith(".zip")) {
+    return "application/x-zip";
+  } else if (filename.endsWith(".gz")) {
+    return "application/x-gzip";
+  }
+  return "text/plain";
+}
+
+bool exists(String path){
+  bool yes = false;
+  File file = SPIFFS.open(path, "r");
+  if(!file.isDirectory()){
+    yes = true;
+  }
+  file.close();
+  return yes;
+}
+
+bool handleFileRead(String path) {
+  debug.println("handleFileRead: " + path);
+  String contentType = getContentType(path);
+  String pathWithGz = path + ".gz";
+  if (exists(pathWithGz) || exists(path)) {
+    if (exists(pathWithGz)) {
+      path += ".gz";
+    }
+    File file = SPIFFS.open(path, "r");
+    server.streamFile(file, contentType);
+    file.close();
+    return true;
+  }
+  return false;
+}
+
+
 void handleSensordata() {
-    String json = "{ \"time\": [";
+    DynamicJsonDocument doc(32629);
+    JsonArray sensor_array = doc.createNestedArray("sensors");
+    JsonArray time_array = doc.createNestedArray("time");
+
     for(size_t i=0; i<buffer_time.numElements(); i++){
-        json += String(*buffer_time.peek(i)) + ",";
+        time_array.add(*buffer_time.peek(i));
     }
-    json += "], \"sensors\": [";
-
-
-    for (size_t i=0; i < sensors.size(); i++) {
+   for (size_t i=0; i < sensors.size(); i++) {
         THSensor *s = sensors.get(i);
-        json += "{";
-        json += "\"name\": \"" + s->getName() + "\",";
-        if(s->hasTemperature()){
-            json += "\"temperature\": [";
-            for(size_t j=0; j<s->buffer_t.numElements(); j++){
-                json += String(*s->buffer_t.peek(j)) + ",";
+        if(s->isEnabled()){
+            JsonObject sensor = sensor_array.createNestedObject();
+            sensor["name"] = s->getName();
+            if(s->hasTemperature()){
+                JsonArray t = sensor.createNestedArray("temperature");
+                for(size_t j=0; j<s->buffer_t.numElements(); j++){
+                    t.add(*s->buffer_t.peek(j));
+                }
             }
-            json += "],";
-        }
-        if(s->hasHumidity()){
-            json += "\"humidity\": [";
-            for(size_t j=0; j<s->buffer_h.numElements(); j++){
-                json += String(*s->buffer_h.peek(j)) + ",";
+            if(s->hasHumidity()){
+                JsonArray h = sensor.createNestedArray("humidity");
+                for(size_t j=0; j<s->buffer_h.numElements(); j++){
+                    h.add(*s->buffer_h.peek(j));
+                }
             }
-            json += "],";
         }
     }
 
-    json += "]}";
-
-
-    // String json_temp = "[";
-    // String json_humid = "[";
-
-    //debug.println(buffer_temp.numElements());
-    // for (size_t i = 0; i < buffer_temp.numElements(); i++) {
-    //     json_temp += "[";
-    //     json_temp += *buffer_time.peek(i);
-    //     json_temp += ",";
-    //     json_temp += *buffer_temp.peek(i);
-    //     json_temp += "]";
-    //     json_humid += "[";
-    //     json_humid += *buffer_time.peek(i);
-    //     json_humid += ",";
-    //     json_humid += *buffer_humid.peek(i);
-    //     json_humid += "]";
-    //     if (i != buffer_temp.numElements() - 1) {
-    //         json_temp += ",";
-    //         json_humid += ",";
-    //     }
-    // }
-    // json_temp += "]";
-    // json_humid += "]";
+    String json;
+    serializeJson(doc, json);
 
     server.send(200, "text/json", json);
 }
 
+/**
+ * Reads current sensor values and returns sensor name and values as JSON string
+ **/
+void handleSensors(){
+    DynamicJsonDocument doc(2048);
+    JsonArray sensor_array = doc.createNestedArray("sensors");
+
+    for (size_t i=0; i < sensors.size(); i++) {
+        THSensor *s = sensors.get(i);
+        if(s->isEnabled()){
+            JsonObject sensor = sensor_array.createNestedObject();
+            sensor["name"] = s->getName();
+            if(s->hasTemperature()){
+                sensor["temperature"] = s->readTemperature();
+            }
+            if(s->hasHumidity()){
+                sensor["humidity"] = s->readHumidity();
+            }
+        }
+    }
+
+    doc["time"] = now();
+
+    String json;
+    serializeJson(doc, json);
+    server.send(200, "text/json", json);
+}
+
+/**
+ * Returns JSON array of available buttons and PWM sliders
+ **/
 void handleButtons(){
-    DynamicJsonBuffer jsonBuffer;
-    JsonArray& root = jsonBuffer.createArray();
+    DynamicJsonDocument doc(1024);
+    // JsonArray root = doc.createNestedArray();
     for(size_t i=0; i<buttons.size(); i++){
         Button b = *buttons.get(i);
-        JsonObject& btn = root.createNestedObject();
+        JsonObject btn = doc.createNestedObject();
         btn["name"] = b.name;
         btn["type"] = (uint8_t)b.type;
         btn["pin"] = b.pin;
@@ -560,13 +665,19 @@ void handleButtons(){
                 btn["max"] = b.max;
                 btn["state"] = ledcRead(b.channel);
                 break;
+            case BTN_INPUT:
+                debug.println("BTN_INPUT not supported!");
+                break;
         }
     }
     String s;
-    root.printTo(s);
+    serializeJson(doc, s);
     server.send(200, "text/json", s);
 }
 
+/**
+ * Handles button click and slider change
+ **/
 void handleButtonChange(){
     String name = server.arg("name"); //root["name"];
     uint8_t value = server.arg("value").toInt();
@@ -607,31 +718,38 @@ void handleConfigUpdate() {
     debug.println("Config Update");
     debug.println(server.args());
     debug.println(server.arg("data"));
-    DynamicJsonBuffer jsonBufferNew;
-    JsonObject &rootNew = jsonBufferNew.parseObject(server.arg("data"));
-    if(rootNew.success()){
-        // don't overwrite WiFi password if empty
-        // replace empty string with old password
-        if(rootNew["wlan"]["pass"].as<String>().length() == 0){
-            File dataFile = SPIFFS.open("/config.json", "r");
-            DynamicJsonBuffer jsonBufferOld;
-            JsonObject &rootOld = jsonBufferOld.parseObject(dataFile);
-            rootNew["wlan"]["pass"] = rootOld["wlan"]["pass"].as<String>();
+    DynamicJsonDocument doc(1024);
+    //JsonObject &rootNew = jsonBufferNew.parseObject(server.arg("data"));
+    DeserializationError error = deserializeJson(doc, server.arg("data"));
+    
+    if(error){
+        debug.println("JSON config not valid");
+        debug.println(error.c_str());
+        server.send(503, "text/plain", "invalid JSON data");
+        return;
+    }
+
+    // don't overwrite WiFi password if empty
+    // replace empty string with old password
+    if(doc["wlan"]["pass"].as<String>().length() == 0){
+        File dataFile = SPIFFS.open("/config.json", "r");
+        DynamicJsonDocument doc_old(1024);
+        DeserializationError error_old = deserializeJson(doc_old, dataFile);
+        if(!error_old){
+            doc["wlan"]["pass"] = doc_old["wlan"]["pass"].as<String>();
             dataFile.close();
         }
-        // replace config file
-        File dataFile = SPIFFS.open("/config.json", "w");
-        rootNew.printTo(dataFile);
-        dataFile.close();
-        // send success
-        server.send(200, "text/plain", "ok");
-        Alarm.delay(100);
-        // restart to read clean values
-        ESP.restart();
-    } else {
-        debug.println("JSON config not valid");
-        server.send(503, "text/plain", "invalid JSON data");
     }
+
+    // replace config file
+    File dataFile = SPIFFS.open("/config.json", "w");
+    serializeJson(doc, dataFile);
+    dataFile.close();
+    // send success
+    server.send(200, "text/plain", "ok");
+    Alarm.delay(100);
+    // restart to read clean values
+    ESP.restart();
 
 }
 
@@ -774,7 +892,10 @@ void readSensors() {
     time_t t = now();
     buffer_time.add(t, true);
     for(size_t i=0; i<sensors.size(); i++){
-        sensors.get(i)->updateTH();
+        THSensor *s = sensors.get(i);
+        if(s->isEnabled()){
+            sensors.get(i)->updateTH();
+        }
     }
 
     // if (dht_type != UNKNOWN) {
