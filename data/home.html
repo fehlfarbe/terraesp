@@ -62,8 +62,22 @@
                     });
                 }
             });
-            
-            options.yAxis.plotLines[0].value = json["humid_level"];
+
+            // add thresholds
+            options.yAxis.plotLines = []
+            json.thresholds.forEach(thresh => {
+                options.yAxis.plotLines.push({
+                        color: 'gray', // Color value
+                        dashStyle: 'dot', // Style of the plot line. Default to solid
+                        value: thresh.threshold, // Value of where the line will appear
+                        width: 2, // Width of the line
+                        label: {
+                            text: thresh.name, // Content of the label.
+                            //align: 'left', // Positioning of the label.
+                            color: 'gray',
+                        }
+                    });
+            });
 
             setTimeout(loadChartData, 60000, options);
 
@@ -94,17 +108,7 @@
                     title: {
                         text: 'C'
                     },
-                    plotLines: [{
-                        color: 'blue', // Color value
-                        dashStyle: 'dot', // Style of the plot line. Default to solid
-                        value: 0, // Value of where the line will appear
-                        width: 2, // Width of the line
-                        label: {
-                            text: 'minimum humidity', // Content of the label.
-                            align: 'left', // Positioning of the label.
-                            color: 'blue',
-                        }
-                    }]
+                    plotLines: []
                     //startOnTick: false,
                     //showFirstLabel: false
                 },

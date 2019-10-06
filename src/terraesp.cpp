@@ -592,8 +592,9 @@ bool handleFileRead(String path) {
  * 
  */
 void handleSensordata() {
-    DynamicJsonDocument doc(36629);
+    DynamicJsonDocument doc(38629);
     JsonArray sensor_array = doc.createNestedArray("sensors");
+    JsonArray thresholds_array = doc.createNestedArray("thresholds");
     JsonArray time_array = doc.createNestedArray("time");
 
     for(size_t i=0; i<buffer_time.numElements(); i++){
@@ -617,6 +618,13 @@ void handleSensordata() {
                 }
             }
         }
+    }
+    for (size_t i=0; i < thresholds.size(); i++) {
+        Threshold *thresh = thresholds.get(i);
+        JsonObject t = thresholds_array.createNestedObject();
+        t["name"] = thresh->getName();
+        t["threshold"] = thresh->getThreshold();
+        t["greater_than"] = thresh->isGreaterThan();
     }
 
     String json;

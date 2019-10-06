@@ -33,14 +33,14 @@ class Threshold {
         Debug debug;
 
         String name;
-        Button* button = nullptr;
-        THSensor* sensor = nullptr;
-        SensorType type = SensorType::UNKNOWN;
+        Button* button;
+        THSensor* sensor;
+        SensorType type;
         float duration;
         float threshold;
         bool greater_than = true;
         bool inverted = false;
-        float gap = 600;
+        float gap;
 
         // save last activation time for gap
         long last_activated = 0;
