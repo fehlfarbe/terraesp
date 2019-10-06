@@ -38,20 +38,13 @@
         console.log("loading chart data...");
         jQuery.get("/sensordata.json", function (json) {
             console.log("got chart data:", json);
-            // inconsistency
-            //if (typeof json !== 'string') {
-            //    json = xhr.responseText;
-            //}
-            //json = JSON.parse(json);
             // convert seconds to milliseconds
+            json.time.map(function(x) { return x * 1000; })
+            
+            // clear data
+            options.series = [];
 
-            json.time.forEach(element => {
-                element *= 1000;
-            });
-            // for (var i = 0; i < json["temperature"].length; i++) {
-            //     json["temperature"][i][0] *= 1000;
-            //     json["humid"][i][0] *= 1000;
-            // }
+            // set new data
             json.sensors.forEach(s => {
                 if(s.hasOwnProperty("temperature")){
                     console.log(zip(json.time, s.temperature));
@@ -159,7 +152,7 @@
                         $("#buttons")
                             .append(b.name + " <input type='range' min='"+b.min+"' " +
                                 "max='"+b.max+"' value='"+b.state+"' id='"+b.name+"'" +
-                                "oninput='onButtonChange(this)'>");
+                                "onchange='onButtonChange(this)'>");
                     }
                     $("#buttons").append("</div>");
                 });

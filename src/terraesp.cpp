@@ -4,7 +4,6 @@
 #include <ArduinoOTA.h>
 #include <HTTPClient.h>
 #include <WebServer.h>
-// #include <ESPAsyncWebServer.h>
 #include "ESPTemplateProcessor.h"
 #include <time.h>
 #include <Time.h>
@@ -20,7 +19,7 @@
 #include <WiFiManager.h>
 #include "Debug.h"
 
-#define MOCKUP_DATA
+// #define MOCKUP_DATA
 #define LED_BUILTIN 2
 
 // Buffer size for 24h / 5 minutes
@@ -31,8 +30,9 @@
 #include "sensors/sht31_sensor.h"
 //#include <DHT.h>
 // use Rob Tillaart's DHTlib because of NaN errors in Adafruit lib
-#include <dht.h>
-
+// #include <dht.h>
+#include "Threshold.h"
+#include "Timer.h"
 #include "datatypes.h"
 #include "utils.h"
 
@@ -40,15 +40,15 @@
 WiFiManager wifiManager;
 
 // settings
-String ssid = "";
-String password = "";
+// String ssid = "";
+// String password = "";
 String host = "terraesp";
-String ap_ssid = "terraesp";
+// String ap_ssid = "terraesp";
 bool ap_mode = false;
 TimeSettings settings_time;
-RainSettings settings_rain;
+LinkedList<Threshold*> thresholds;
 LinkedList<Button*> buttons;
-LinkedList<AlarmSettings*> alarms;
+LinkedList<Timer*> timers;
 
 // sensors
 // dht dht_sensor;
@@ -69,8 +69,8 @@ WiFiClient telnetClient;
 /**************************
  * DECLARATIONS
  *************************/
-void letItRain();
-void stopRain();
+THSensor* getSensor(String name);
+Button* getButton(String name);
 void randomValues(size_t count);
 void readSensors();
 time_t getNtpTime();
@@ -265,15 +265,21 @@ void loop() {
         }
     }
 
+    // update thresholds ->deactivates thresholds after duration
+    for(size_t i=0; i<thresholds.size(); i++){
+        Threshold *t = thresholds.get(i);
+        t->update();
+    }
+
     // delay, handle alarms/sensors and so on
     Alarm.delay(10);
 }
 
-/**************************************
+/**
+ * @brief load settings an initialize sensors, buttons, timers, thresholds, ...
  * 
- * Load Settings and initializte stuff
- * 
- *************************************/
+ * @param fs FileSystem
+ */
 void loadSettings(fs::FS &fs) {
     File dataFile = fs.open("/config.json");
     String json = dataFile.readString();
@@ -286,39 +292,15 @@ void loadSettings(fs::FS &fs) {
         debug.println(error.c_str());
         return;
     } else {
-        // load wlan settings
-        // JsonObject &wlanJSON = root["wlan"];
-        // if (wlanJSON.success()) {
-        //     ssid = (const char *) wlanJSON["ssid"];
-        //     password = (const char *) wlanJSON["pass"];
-        //     host = (const char *) wlanJSON["host"];
-        // } else {
-        //     debug.println("Cannot read WiFi config. Start access point");
-        //     createAP();
-        // }
-        // load timer settings
-        JsonArray timerJSON = doc["timer"];
-        for (auto t : timerJSON) {
-            struct AlarmSettings *s = new struct AlarmSettings;
-            s->name = (const char *) t["name"];
-            s->pin = (uint8_t) t["pin"];
-            s->alarmOnHour = (int) split(String((const char *) t["on"]), ':', 0).toInt();
-            s->alarmOnMinute = (int) split(String((const char *) t["on"]), ':', 1).toInt();
-            s->alarmOffHour = (int) split(String((const char *) t["off"]), ':', 0).toInt();
-            s->alarmOffMinute = (int) split(String((const char *) t["off"]), ':', 1).toInt();
-            s->inverted = (bool) t["inverted"];
-            alarms.add(s);
-        };
-
         // load sensor settings
         JsonArray sensorsJSON = doc["sensors"];
         for (auto s : sensorsJSON) {
             debug.print("Got new sensor ");
-            debug.print((const char *) s["type"]);
+            debug.print(s["type"].as<String>());
             debug.print(" on pin/address ");
-            debug.print((const char *) s["pin"]);
+            debug.print(s["pin"].as<String>());
             debug.print(" ");
-            debug.println((const char *) s["address"]);
+            debug.println(s["address"].as<String>());
             String type((const char*)s["type"]);
             type.toLowerCase();
             THSensor *thsensor = nullptr;
@@ -356,22 +338,7 @@ void loadSettings(fs::FS &fs) {
             }
         }
 
-        // load rain
-        JsonObject rainJSON = doc["rain"];
-        if (!rainJSON.isNull()) {
-            settings_rain.pin = (uint8_t) rainJSON["pin"];
-            settings_rain.duration = (int) rainJSON["duration"];
-            settings_rain.minGap = (int) rainJSON["min_gap"];
-            settings_rain.threshold = (int) rainJSON["threshold"];
-            settings_rain.initialized = true;
-            settings_rain.inverted = (bool) rainJSON["inverted"];
-            pinMode(settings_rain.pin, OUTPUT);
-            digitalWrite(settings_rain.pin, (uint8_t) settings_rain.inverted);
-        } else {
-            debug.println("No (valid) config for rain");
-        }
-
-        // load buttons
+        // load buttons/actors
         JsonArray buttonsJSON = doc["buttons"];
         uint8_t channel = 0;
         for (auto b : buttonsJSON) {
@@ -404,6 +371,52 @@ void loadSettings(fs::FS &fs) {
             }
         }
 
+        // load timer settings
+        JsonArray timerJSON = doc["timers"];
+        for (auto t : timerJSON) {
+            Button *button = getButton(t["button"].as<String>());
+            if(button){
+                Timer *timer = new Timer(t["name"].as<String>(),
+                                          button,
+                                          split(String((const char *) t["on"]), ':', 0).toInt(),
+                                          split(String((const char *) t["on"]), ':', 1).toInt(),
+                                          split(String((const char *) t["off"]), ':', 0).toInt(),
+                                          split(String((const char *) t["off"]), ':', 1).toInt(),
+                                          t["inverted"]);
+                timers.add(timer);                  
+            }
+        };
+
+        // load thresholds
+        JsonArray thresholdsJSON = doc["thresholds"];
+        for (auto s : thresholdsJSON) {
+            THSensor* sensor = getSensor(s["sensor"].as<String>());
+            Button* button = getButton(s["button"].as<String>());
+            // if sensor and button exist create threshold
+            if(sensor && button){
+                Threshold::SensorType sensor_type = Threshold::SensorType::UNKNOWN;
+                if(s["sensor_type"].as<String>() == "humidity"){
+                    sensor_type = Threshold::SensorType::HUMIDITY;
+                } else if(s["sensor_type"].as<String>() == "temperature"){
+                    sensor_type = Threshold::SensorType::TEMPERATURE;
+                } else {
+                    debug.printf("Threshold %s sensor type %s is unknown\n", s["name"].as<String>().c_str(), s["sensor_type"].as<String>().c_str());
+                }
+
+                Threshold *thresh = new Threshold(s["name"].as<String>(),
+                                                  sensor,
+                                                  button,
+                                                  s["duration"],
+                                                  s["threshold"],
+                                                  s["comparator"],
+                                                  s["inverted"],
+                                                  s["gap"],
+                                                  sensor_type);
+                thresholds.add(thresh);
+            }
+            
+        }
+
         // general settings
         JsonObject generalJSON = doc["general"];
         settings_time.dst = (bool)generalJSON["dst"]; // daylight saving time
@@ -413,50 +426,20 @@ void loadSettings(fs::FS &fs) {
 
 /**************************************
  * 
- * (Re-)connect WiFi
+ * OTA Update
  * 
  *************************************/
-bool connectWiFi() {
-    debug.print("Connecting to ");
-    debug.println(ssid);
-    WiFi.begin(ssid.c_str(), password.c_str());
 
-    int retries = 0;
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        debug.print(".");
-        if(retries++ > 10){
-            return false;
-        }
-    }
-
-    debug.println("");
-    debug.println("WiFi connected");
-    debug.println("IP address: ");
-    debug.println(WiFi.localIP());
-
-    MDNS.begin(host.c_str());
-    return true;
-}
-
-void createAP(){
-    debug.println("Cannot connect to WiFi. Create Access Point");
-    WiFi.softAP(ap_ssid.c_str());
-    ap_mode = true;
-    IPAddress myIP = WiFi.softAPIP();
-    debug.print("AP IP address: ");
-    debug.println(myIP);
-}
-
+/**
+ * @brief Inits the OTA Update
+ * 
+ */
 void initOTA(){
     // Port defaults to 3232
     // ArduinoOTA.setPort(3232);
 
     // Hostname defaults to esp3232-[MAC]
     ArduinoOTA.setHostname(host.c_str());
-
-    // No authentication by default
-    // ArduinoOTA.setPassword("admin");
 
     // Password can be set with it's md5 value as well
     // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
@@ -498,6 +481,11 @@ void initOTA(){
  * HTTP handler
  * 
  *************************************/
+
+/**
+ * @brief sends the root site with processed template
+ * 
+ */
 void handleRoot() {
     if (ESPTemplateProcessor(server).send(String("/base.html"), indexProcessor)) {
         //debug.println("SUCCESS");
@@ -508,7 +496,6 @@ void handleRoot() {
 }
 
 String indexProcessor(const String &key) {
-    //debug.println(String("KEY IS ") + key);
     if (key == "CONTENT") {
         File dataFile = SPIFFS.open("/home.html");
         return dataFile.readString();
@@ -523,7 +510,12 @@ void handleConfig() {
     }
 }
 
-
+/**
+ * @brief Get the Content Type string
+ * 
+ * @param filename path to file
+ * @return String Mimetype
+ */
 String getContentType(String filename) {
   if (server.hasArg("download")) {
     return "application/octet-stream";
@@ -555,6 +547,13 @@ String getContentType(String filename) {
   return "text/plain";
 }
 
+/**
+ * @brief Checks if path exists
+ * 
+ * @param path URL
+ * @return true exists
+ * @return false does not exist
+ */
 bool exists(String path){
   bool yes = false;
   File file = SPIFFS.open(path, "r");
@@ -565,6 +564,13 @@ bool exists(String path){
   return yes;
 }
 
+/**
+ * @brief Checks if requested file or gzip compressed file exists and sens it to the client
+ * 
+ * @param path URL to file
+ * @return true path or path.gz found
+ * @return false  path or path.gz not found
+ */
 bool handleFileRead(String path) {
   debug.println("handleFileRead: " + path);
   String contentType = getContentType(path);
@@ -581,9 +587,12 @@ bool handleFileRead(String path) {
   return false;
 }
 
-
+/**
+ * @brief Sends buffered timestamps and sensor value for all sensors as JSON object for charts, ...
+ * 
+ */
 void handleSensordata() {
-    DynamicJsonDocument doc(32629);
+    DynamicJsonDocument doc(36629);
     JsonArray sensor_array = doc.createNestedArray("sensors");
     JsonArray time_array = doc.createNestedArray("time");
 
@@ -617,8 +626,9 @@ void handleSensordata() {
 }
 
 /**
- * Reads current sensor values and returns sensor name and values as JSON string
- **/
+ * @brief Reads current sensor values and returns sensor name, values and current time as JSON object
+ * 
+ */
 void handleSensors(){
     DynamicJsonDocument doc(2048);
     JsonArray sensor_array = doc.createNestedArray("sensors");
@@ -645,8 +655,9 @@ void handleSensors(){
 }
 
 /**
- * Returns JSON array of available buttons and PWM sliders
- **/
+ * @brief Returns JSON array of available buttons and PWM sliders
+ * 
+ */
 void handleButtons(){
     DynamicJsonDocument doc(1024);
     // JsonArray root = doc.createNestedArray();
@@ -658,7 +669,7 @@ void handleButtons(){
         btn["pin"] = b.pin;
         switch(b.type){
             case BTN_TOGGLE:
-                btn["state"] = digitalRead(b.pin) ^ b.inverted != 0;
+                btn["state"] = (digitalRead(b.pin) ^ b.inverted) != 0;
                 break;
             case BTN_SLIDER:
                 btn["min"] = b.min;
@@ -676,8 +687,9 @@ void handleButtons(){
 }
 
 /**
- * Handles button click and slider change
- **/
+ * @brief Handles button click and slider change
+ * 
+ */
 void handleButtonChange(){
     String name = server.arg("name"); //root["name"];
     uint8_t value = server.arg("value").toInt();
@@ -796,39 +808,28 @@ void handleConfigUpdate() {
 //     return auth;
 // }
 
-/**************************************
+/**
+ * @brief gets called when an Alarm was triggered. Checks all Timers for the right alarm and activates button
  * 
- * Timer callback
- * 
- *************************************/
+ */
 void timerCallback() {
     AlarmId id = Alarm.getTriggeredAlarmId();
+    debug.printf("Timer callback for Id %d\n", id);
     // find the triggered alarm by ID
-    for (size_t i = 0; i < alarms.size(); i++) {
-        AlarmSettings *a = alarms.get(i);
-        if (a->alarmOnId == id) {
-            debug.print("Timer ");
-            debug.print(a->name);
-            debug.println(" triggered");
-            digitalWrite(a->pin, a->inverted ? LOW : HIGH);
-            break;
-        }
-        if (a->alarmOffId == id) {
-            debug.print("Timer ");
-            debug.print(a->name);
-            debug.println(" triggered");
-            digitalWrite(a->pin, a->inverted ? HIGH : LOW);
-            break;
+    for (size_t i = 0; i < timers.size(); i++) {
+        Timer* t = timers.get(i);
+        if(t->checkAlarmId(id)){
+            return;
         }
     }
 }
 
-/**************************************
- *
- * Initialize timers, return false if
- * time is not synced
- *
- *************************************/
+/**
+ * @brief Initialize timers, return false if time is not synced
+ * 
+ * @return true time is synced
+ * @return false time is not synced
+ */
 bool initTimers() {
     if (timeStatus() != timeSet) {
         debug.println("Cannot init timers. Time not set");
@@ -841,21 +842,24 @@ bool initTimers() {
     ti = *localtime(&t);
     unsigned int time_min = ti.tm_hour * 60 + ti.tm_min;
 
-    for (size_t i = 0; i < alarms.size(); i++) {
-        AlarmSettings *a = alarms.get(i);
-        debug.printf("Init timer %s on: %02d:%02d, off: %02d:%02d\n",
-        a->name.c_str(), a->alarmOnHour, a->alarmOnMinute, a->alarmOffHour, a->alarmOffMinute);
-        pinMode(a->pin, OUTPUT);
-        a->alarmOnId = Alarm.alarmRepeat(a->alarmOnHour, a->alarmOnMinute, 0, timerCallback);
-        a->alarmOffId = Alarm.alarmRepeat(a->alarmOffHour, a->alarmOffMinute, 0, timerCallback);
-        a->init = true;
-
-        // activate pin if we are in the timespan
-        unsigned int alarm_on = a->alarmOnHour * 60 + a->alarmOnMinute;
-        unsigned int alarm_off = a->alarmOffHour * 60 + a->alarmOffMinute;
-        if(alarm_on < time_min && time_min < alarm_off){
-            digitalWrite(a->pin, a->inverted ? LOW : HIGH);
+    for (size_t i = 0; i < timers.size(); i++) {
+        Timer *t = timers.get(i);
+        if(!t->isInitialized()){
+            t->init(time_min, timerCallback);
         }
+        // debug.printf("Init timer %s on: %02d:%02d, off: %02d:%02d\n",
+        // a->name.c_str(), a->alarmOnHour, a->alarmOnMinute, a->alarmOffHour, a->alarmOffMinute);
+        // // pinMode(a->pin, OUTPUT);
+        // a->alarmOnId = Alarm.alarmRepeat(a->alarmOnHour, a->alarmOnMinute, 0, timerCallback);
+        // a->alarmOffId = Alarm.alarmRepeat(a->alarmOffHour, a->alarmOffMinute, 0, timerCallback);
+        // a->init = true;
+
+        // // activate pin if we are in the timespan
+        // unsigned int alarm_on = a->alarmOnHour * 60 + a->alarmOnMinute;
+        // unsigned int alarm_off = a->alarmOffHour * 60 + a->alarmOffMinute;
+        // if(alarm_on < time_min && time_min < alarm_off){
+        //     digitalWrite(a->pin, a->inverted ? LOW : HIGH);
+        // }
     }
 
     return true;
@@ -896,6 +900,86 @@ void readSensors() {
         if(s->isEnabled()){
             sensors.get(i)->updateTH();
         }
+    }
+
+    // check for thresholds and activate buttons
+    for(size_t i=0; i<thresholds.size(); i++){
+        Threshold *t = thresholds.get(i);
+        t->checkThreshold();
+        // // check gap
+        // if(millis() - t->last_activated < t->gap){
+        //     debug.printf("Threshold %s: minimum gap of %.2f seconds not reached\n", t->name.c_str(), t->gap);
+        //     continue;
+        // }
+        // // get Sensor by name
+        // THSensor *sensor = nullptr;
+        // for(size_t s=0; s<sensors.size(); s++){
+        //     if(sensors.get(s)->getName() == t->sensor){
+        //         sensor = sensors.get(s);
+        //         break;
+        //     }
+        // }
+        // if(!sensor){
+        //     debug.printf("Threshold %s: cannot find sensor with name %s\n", t->name.c_str(), t->sensor.c_str());
+        //     continue;
+        // }
+        // // get value
+        // float value = NAN;
+        // switch (t->type)
+        // {
+        // case SensorType::HUMIDITY:
+        //     value = sensor->readLastHumidity();
+        //     debug.printf("Threshold %s: sensor %s humidity %.2f\n", t->name.c_str(), t->sensor.c_str(), value);
+        //     break;
+        // case SensorType::TEMPERATURE:
+        //     value = sensor->readLastTemperature();
+        //     debug.printf("Threshold %s: sensor %s temperature %.2f\n", t->name.c_str(), t->sensor.c_str(), value);
+        //     break;
+        // default:
+        //     debug.printf("Threshold %s: type %d UNKNOWN\n", t->name.c_str(), t->type);
+        //     break;
+        // }
+        // if(isnan(value)){
+        //     debug.printf("Threshold %s: sensor %s value is nan\n", t->name.c_str(), t->sensor.c_str());
+        //     continue;
+        // }
+        // // compare value
+        // bool activate = false;
+        // if(t->greater_than){
+        //     activate = value > t->threshold;
+        // } else {
+        //     activate = value < t->threshold;
+        // }
+        //         debug.printf("Threshold %s: check if val %c thresh -> %.2f %c %.2f = %d\n",
+        //              t->name.c_str(),
+        //              t->greater_than ? '>' : '<',
+        //              value,
+        //              t->greater_than ? '>' : '<',
+        //              t->threshold,
+        //              activate);
+        // // check it
+        // if(!activate){
+        //     continue;
+        // }
+        // debug.printf("Threshold %s: val %c thresh -> %.2f %c %.2f\n",
+        //              t->name.c_str(),
+        //              t->greater_than ? '>' : '<',
+        //              value,
+        //              t->greater_than ? '>' : '<',
+        //              t->threshold);
+        // // get button by name if threshold is active
+        // Button *button = nullptr;
+        // for(size_t b=0; b<buttons.size(); b++){
+        //     if(buttons.get(b)->name == t->button){
+        //         button = buttons.get(b);
+        //         break;
+        //     }
+        // }
+        // if(!button){
+        //     debug.printf("Threshold %s: cannot find button with name %s\n", t->name.c_str(), t->button.c_str());
+        //     continue;
+        // }
+        // startThresholdAction(t, button);
     }
 
     // if (dht_type != UNKNOWN) {
@@ -999,7 +1083,7 @@ void readSensors() {
     //         debug.printf("Humidity is under threshold of (%.2f < %.2f). Start rain for %d seconds\n",
     //                       humid, settings_rain.threshold, settings_rain.duration);
     //         if((millis() - settings_rain.last_rain) / 1000.0f > settings_rain.minGap){
-    //             letItRain();
+    //             startThresholdAction
     //             settings_rain.last_rain = millis();
     //         } else {
     //             debug.printf("Rain gap of %ds prevents rain (have to wait for %ds)",
@@ -1009,24 +1093,54 @@ void readSensors() {
     // }
 }
 
-/**************************************
- *
- * Start rain / whatever for a given duration
- *
- *************************************/
-void letItRain() {
-    if (settings_rain.initialized) {
-        debug.printf("Let it rain for %d seconds\n", settings_rain.duration);
-        digitalWrite(settings_rain.pin, settings_rain.inverted ? LOW : HIGH);
-        Alarm.timerOnce(settings_rain.duration, stopRain);
+// /**************************************
+//  *
+//  * Start rain / whatever for a given duration
+//  *
+//  *************************************/
+// void startThresholdAction(Threshold *t, Button *b) {
+//     debug.printf("Activate threshold %s for %.2f seconds...\n", t->name.c_str(), t->duration);
+//     digitalWrite(b->pin, t->inverted ? LOW : HIGH);
+//     Alarm.delay(t->duration*1000);
+//     stopThresholdAction(t, b);
+//     // Alarm.timerOnce(t->duration, [t, b](){
+//     //     digitalWrite(b->pin, t->inverted ? HIGH : LOW);
+//     //     t->last_activated = millis();
+//     // });
+//     // if (settings_rain.initialized) {
+//     //     debug.printf("Let it rain for %d seconds\n", settings_rain.duration);
+//     //     digitalWrite(settings_rain.pin, settings_rain.inverted ? LOW : HIGH);
+//     //     Alarm.timerOnce(settings_rain.duration, stopThresholdAction);
+//     // }
+// }
+
+// void stopThresholdAction(Threshold *t, Button *b) {
+//     debug.printf("Deactivate threshold %s after %.2f seconds...\n", t->name.c_str(), t->duration);
+//     digitalWrite(b->pin, t->inverted ? HIGH : LOW);
+//     t->last_activated = millis();
+// }
+
+
+THSensor* getSensor(String name){
+    // get Sensor by name
+    for(size_t i=0; i<sensors.size(); i++){
+        if(sensors.get(i)->getName() == name){
+            return sensors.get(i);
+        }
     }
+    debug.printf("Cannot find sensor with name %s\n", name.c_str());
+    return nullptr;
 }
 
-void stopRain() {
-    if (settings_rain.initialized) {
-        debug.println("Stopping rain...");
-        digitalWrite(settings_rain.pin, settings_rain.inverted ? HIGH : LOW);
+Button* getButton(String name){
+    // get button by name
+    for(size_t i=0; i<buttons.size(); i++){
+        if(buttons.get(i)->name == name){
+            return buttons.get(i);
+        }
     }
+    debug.printf("Cannot find button with name %s\n", name.c_str());
+    return nullptr;
 }
 
 /**************************************

@@ -81,7 +81,9 @@ bool DHT11Sensor::updateValues(){
             if (chk == DHTLIB_OK) {
                 m_temperature = sensor.temperature;
                 m_humidity = sensor.humidity;
+                return true;
             }
         }
     }
+    return false;
 }
