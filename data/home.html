@@ -39,7 +39,7 @@
         jQuery.get("/sensordata.json", function (json) {
             console.log("got chart data:", json);
             // convert seconds to milliseconds
-            json.time.map(function(x) { return x * 1000; })
+            json.time = json.time.map(function(x) { return x * 1000; });
             
             // clear data
             options.series = [];
@@ -47,7 +47,7 @@
             // set new data
             json.sensors.forEach(s => {
                 if(s.hasOwnProperty("temperature")){
-                    console.log(zip(json.time, s.temperature));
+                    //console.log(zip(json.time, s.temperature));
                     options.series.push({
                         "data": zip(json.time, s.temperature),
                         "name": s.name + " temperature",
@@ -77,6 +77,24 @@
                             color: 'gray',
                         }
                     });
+            });
+
+            // add events
+            json.events.forEach(e => {
+                // Add flags for important milestones. This requires Highstock.
+                if (Highcharts.seriesTypes.flags) {
+                    options.series.push({
+                        type: 'flags',
+                        name: e.name,
+                        color: '#333333',
+                        shape: 'squarepin',
+                        y: -80,
+                        data: [
+                            { x: e.time*1000, text: e.description, title: e.name, shape: 'squarepin' }
+                        ],
+                        showInLegend: false
+                    });
+                }
             });
 
             setTimeout(loadChartData, 60000, options);

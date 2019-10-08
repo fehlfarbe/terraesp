@@ -1,7 +1,9 @@
 #ifndef TIMER_H
 #define TIMER_H
 #include <Arduino.h>
+#include <RingBufCPP.h>
 #include <datatypes.h>
+#include <Event.h>
 #include <Debug.h>
 
 class Timer {
@@ -11,6 +13,7 @@ class Timer {
         bool init(unsigned int time_min, OnTick_t timerCallback);
         bool isInitialized();
         bool checkAlarmId(AlarmId);
+        void setEventList(RingBufCPP<Event, 100> *events);
 
         // AlarmId getAlarmOnId();
         // AlarmId getAlarmOffId();
@@ -31,6 +34,8 @@ class Timer {
         int alarmOffMinute;
         bool initialized = false;
         bool inverted = false;
+
+        RingBufCPP<Event, 100> *events = nullptr;
 };
 
 #endif

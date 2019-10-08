@@ -47,7 +47,7 @@ bool Timer::init(unsigned int time_min, OnTick_t timerCallback){
     if(alarm_on < alarm_off && alarm_on < time_min && time_min < alarm_off){
         this->activate();
     }
-    else if(alarm_off < alarm_on && time_min < alarm_off){
+    else if(alarm_off < alarm_on && (time_min < alarm_off || time_min > alarm_on)){
         this->activate();
     }
 
@@ -83,6 +83,11 @@ bool Timer::checkAlarmId(AlarmId id){
  * 
  */
 void Timer::activate(){
+    if(this->events){
+        String description = "Timer " + name + " ON at ";
+        description += alarmOnHour + String(":") + alarmOnMinute;
+        this->events->add(Event(now(), Event::Type::TIMER_ON, description), true);
+    }
     debug.printf("Timer %s triggered button %s on\n", name.c_str(), button->name.c_str());
     digitalWrite(button->pin, inverted ? LOW : HIGH);
 }
@@ -92,6 +97,15 @@ void Timer::activate(){
  * 
  */
 void Timer::deactivate(){
+    if(this->events){
+        String description = "Timer OFF at ";
+        description += alarmOffHour + String(":") + alarmOffMinute;
+        this->events->add(Event(now(), Event::Type::TIMER_OFF, description), true);
+    }
     debug.printf("Timer %s triggered button %s off\n", name.c_str(), button->name.c_str());
     digitalWrite(button->pin, inverted ? HIGH : LOW);
+}
+
+void Timer::setEventList(RingBufCPP<Event, 100> *events){
+    this->events = events;
 }

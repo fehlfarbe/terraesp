@@ -1,20 +1,7 @@
 #ifndef DATATYPES_H
 #define DATATYPES_H
-
 #include <TimeAlarms.h>
 
-// struct AlarmSettings {
-//   String name;
-//   AlarmId alarmOnId = -1;
-//   AlarmId alarmOffId = -1;
-//   uint8_t pin;
-//   int alarmOnHour;
-//   int alarmOnMinute;
-//   int alarmOffHour;
-//   int alarmOffMinute;
-//   bool init = false;
-//   bool inverted = false;
-// };
 
 struct TimeSettings {
     bool dst = false;
@@ -29,55 +16,6 @@ enum DHTType {
     AM2302,
     AM2301
 };
-
-//
-//enum ThreshAction {
-//  ON,
-//  OFF
-//};
-//
-//enum ThreshType {
-//  MIN,
-//  MAX
-//};
-//
-//struct ThreshSettings {
-//  String name;
-//  int pin;
-//  ThreshAction action;
-//  int duration;
-//  float value;
-//  ThreshType type;
-//};
-
-// struct RainSettings {
-//     uint8_t pin;
-//     int duration;
-//     int minGap = 600;
-//     float threshold;
-//     bool initialized = false;
-//     bool inverted = false;
-//     long last_rain = 0;
-// };
-// enum SensorType {
-//     TEMPERATURE,
-//     HUMIDITY
-// };
-
-// struct Threshold {
-//     String name;
-//     String button;
-//     String sensor;
-//     SensorType type;
-//     float duration;
-//     float threshold;
-//     bool greater_than = true;
-//     bool inverted = false;
-//     float gap = 600;
-//     // save last activation time for gap
-//     long last_activated = 0;
-// };
-
 
 enum ButtonType {
     BTN_TOGGLE=0,

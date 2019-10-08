@@ -2,6 +2,8 @@
 #define THRESHOLD_H
 #include <Arduino.h>
 #include <datatypes.h>
+#include <RingBufCPP.h>
+#include <Event.h>
 #include <Debug.h>
 #include <sensors/sensors.h>
 
@@ -20,6 +22,7 @@ class Threshold {
 
         void checkThreshold();
         void update();
+        void setEventList(RingBufCPP<Event, 100> *events);
 
         String getName();
         float getThreshold();
@@ -33,19 +36,21 @@ class Threshold {
         Debug debug;
 
         String name;
-        Button* button;
         THSensor* sensor;
-        SensorType type;
+        Button* button;
         float duration;
         float threshold;
         bool greater_than = true;
         bool inverted = false;
         float gap;
+        SensorType type;
 
         // save last activation time for gap
         long last_activated = 0;
         long activated = 0;
         bool is_active = false;
+
+        RingBufCPP<Event, 100> *events = nullptr;
 };
 
 #endif

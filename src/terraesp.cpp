@@ -33,6 +33,7 @@
 // #include <dht.h>
 #include "Threshold.h"
 #include "Timer.h"
+#include "Event.h"
 #include "datatypes.h"
 #include "utils.h"
 
@@ -49,6 +50,7 @@ TimeSettings settings_time;
 LinkedList<Threshold*> thresholds;
 LinkedList<Button*> buttons;
 LinkedList<Timer*> timers;
+RingBufCPP<Event, 100> events;
 
 // sensors
 // dht dht_sensor;
@@ -236,6 +238,7 @@ void loop() {
     } else {
         debug.println(WiFi.status());
         digitalWrite(LED_BUILTIN, LOW);
+        wifiManager.autoConnect();
     }
 
     //debug.printf("WiFi state: %d\n", WiFi.status());
@@ -383,6 +386,7 @@ void loadSettings(fs::FS &fs) {
                                           split(String((const char *) t["off"]), ':', 0).toInt(),
                                           split(String((const char *) t["off"]), ':', 1).toInt(),
                                           t["inverted"]);
+                timer->setEventList(&events);
                 timers.add(timer);                  
             }
         };
@@ -403,15 +407,21 @@ void loadSettings(fs::FS &fs) {
                     debug.printf("Threshold %s sensor type %s is unknown\n", s["name"].as<String>().c_str(), s["sensor_type"].as<String>().c_str());
                 }
 
+                bool greater_than = false;
+                if(s["comparator"].as<String>() == ">"){
+                    greater_than = true;
+                }
+
                 Threshold *thresh = new Threshold(s["name"].as<String>(),
                                                   sensor,
                                                   button,
                                                   s["duration"],
                                                   s["threshold"],
-                                                  s["comparator"],
+                                                  greater_than,
                                                   s["inverted"],
                                                   s["gap"],
                                                   sensor_type);
+                thresh->setEventList(&events);
                 thresholds.add(thresh);
             }
             
@@ -595,6 +605,7 @@ void handleSensordata() {
     DynamicJsonDocument doc(38629);
     JsonArray sensor_array = doc.createNestedArray("sensors");
     JsonArray thresholds_array = doc.createNestedArray("thresholds");
+    JsonArray events_array = doc.createNestedArray("events");
     JsonArray time_array = doc.createNestedArray("time");
 
     for(size_t i=0; i<buffer_time.numElements(); i++){
@@ -625,6 +636,14 @@ void handleSensordata() {
         t["name"] = thresh->getName();
         t["threshold"] = thresh->getThreshold();
         t["greater_than"] = thresh->isGreaterThan();
+    }
+    for (size_t i=0; i < events.numElements(); i++) {
+        Event* event = events.peek(i);
+        JsonObject e = events_array.createNestedObject();
+        e["time"] = event->getTime();
+        e["type"] = event->getType();
+        e["name"] = event->getEventString();
+        e["description"] = event->getDescription();
     }
 
     String json;
@@ -709,12 +728,14 @@ void handleButtonChange(){
                 case BTN_TOGGLE:
                     debug.println(value ^ b.inverted);
                     digitalWrite(b.pin, value ^ b.inverted);
+                    events.add(Event(now(), Event::Type::BUTTON_TOGGLE, "Set Button " + b.name + " " + String(value ^ b.inverted)));
                     break;
                 case BTN_SLIDER:
                     if(value <= b.max && value >= b.min){
                         //analogWrite(b.pin, value);
                         debug.printf("Change PWM on channel %d to value: %d\n", b.channel, value);
                         ledcWrite(b.channel, value);
+                        events.add(Event(now(), Event::Type::BUTTON_TOGGLE, "Set slider " + b.name + " to " + value));
                     }
                     break;
                 default:
@@ -839,7 +860,7 @@ void timerCallback() {
  * @return false time is not synced
  */
 bool initTimers() {
-    if (timeStatus() != timeSet) {
+    if (timeStatus() != timeStatus_t::timeSet) {
         debug.println("Cannot init timers. Time not set");
         return false;
     }
@@ -914,191 +935,7 @@ void readSensors() {
     for(size_t i=0; i<thresholds.size(); i++){
         Threshold *t = thresholds.get(i);
         t->checkThreshold();
-        // // check gap
-        // if(millis() - t->last_activated < t->gap){
-        //     debug.printf("Threshold %s: minimum gap of %.2f seconds not reached\n", t->name.c_str(), t->gap);
-        //     continue;
-        // }
-        // // get Sensor by name
-        // THSensor *sensor = nullptr;
-        // for(size_t s=0; s<sensors.size(); s++){
-        //     if(sensors.get(s)->getName() == t->sensor){
-        //         sensor = sensors.get(s);
-        //         break;
-        //     }
-        // }
-        // if(!sensor){
-        //     debug.printf("Threshold %s: cannot find sensor with name %s\n", t->name.c_str(), t->sensor.c_str());
-        //     continue;
-        // }
-        // // get value
-        // float value = NAN;
-        // switch (t->type)
-        // {
-        // case SensorType::HUMIDITY:
-        //     value = sensor->readLastHumidity();
-        //     debug.printf("Threshold %s: sensor %s humidity %.2f\n", t->name.c_str(), t->sensor.c_str(), value);
-        //     break;
-        // case SensorType::TEMPERATURE:
-        //     value = sensor->readLastTemperature();
-        //     debug.printf("Threshold %s: sensor %s temperature %.2f\n", t->name.c_str(), t->sensor.c_str(), value);
-        //     break;
-        // default:
-        //     debug.printf("Threshold %s: type %d UNKNOWN\n", t->name.c_str(), t->type);
-        //     break;
-        // }
-        // if(isnan(value)){
-        //     debug.printf("Threshold %s: sensor %s value is nan\n", t->name.c_str(), t->sensor.c_str());
-        //     continue;
-        // }
-        // // compare value
-        // bool activate = false;
-        // if(t->greater_than){
-        //     activate = value > t->threshold;
-        // } else {
-        //     activate = value < t->threshold;
-        // }
-        //         debug.printf("Threshold %s: check if val %c thresh -> %.2f %c %.2f = %d\n",
-        //              t->name.c_str(),
-        //              t->greater_than ? '>' : '<',
-        //              value,
-        //              t->greater_than ? '>' : '<',
-        //              t->threshold,
-        //              activate);
-        // // check it
-        // if(!activate){
-        //     continue;
-        // }
-        // debug.printf("Threshold %s: val %c thresh -> %.2f %c %.2f\n",
-        //              t->name.c_str(),
-        //              t->greater_than ? '>' : '<',
-        //              value,
-        //              t->greater_than ? '>' : '<',
-        //              t->threshold);
-        // // get button by name if threshold is active
-        // Button *button = nullptr;
-        // for(size_t b=0; b<buttons.size(); b++){
-        //     if(buttons.get(b)->name == t->button){
-        //         button = buttons.get(b);
-        //         break;
-        //     }
-        // }
-        // if(!button){
-        //     debug.printf("Threshold %s: cannot find button with name %s\n", t->name.c_str(), t->button.c_str());
-        //     continue;
-        // }
-        // startThresholdAction(t, button);
     }
-
-    // if (dht_type != UNKNOWN) {
-    //     time_t t;
-    //     float temp = 0;
-    //     float humid = 0;
-
-    //     // get new values (try up to 10 times if NaN or incorrect values)
-    //     size_t i = 0;
-    //     for(; i<10; i++){
-    //         t = now();
-    //         int chk = -1;
-    //         switch (dht_type){
-    //             case DHT11:
-    //                 chk = dht_sensor.read11(dht_pin);
-    //                 break;
-    //             case DHT21:
-    //                 chk = dht_sensor.read21(dht_pin);
-    //                 break;
-    //             case DHT22:
-    //                 chk = dht_sensor.read22(dht_pin);
-    //                 break;
-    //             case AM2301:
-    //                 chk = dht_sensor.read2301(dht_pin);
-    //                 break;
-    //             case AM2302:
-    //                 chk = dht_sensor.read2302(dht_pin);
-    //                 break;
-    //             default:
-    //                 chk = -1;
-    //         }
-    //         switch (chk)
-    //         {
-    //             case DHTLIB_OK:
-    //                 debug.print("OK,\t");
-    //                 break;
-    //             case DHTLIB_ERROR_CHECKSUM:
-    //                 debug.print("Checksum error,\t");
-    //                 break;
-    //             case DHTLIB_ERROR_TIMEOUT:
-    //                 debug.print("Time out error,\t");
-    //                 break;
-    //             case DHTLIB_ERROR_CONNECT:
-    //                 debug.print("Connect error,\t");
-    //                 break;
-    //             case DHTLIB_ERROR_ACK_L:
-    //                 debug.print("Ack Low error,\t");
-    //                 break;
-    //             case DHTLIB_ERROR_ACK_H:
-    //                 debug.print("Ack High error,\t");
-    //                 break;
-    //             default:
-    //                 debug.print("Unknown error,\t");
-    //                 break;
-    //         }
-
-    //         // test for NaN values and filter incorrect values
-    //         if (chk != DHTLIB_OK) {
-    //             // delay time between reads > 2s
-    //             temp = humid = 0;
-    //             Alarm.delay(2100);
-    //             continue;
-    //         } else {
-    //             temp = dht_sensor.temperature;
-    //             humid = dht_sensor.humidity;
-    //             // both 0 == wrong sensor?
-    //             if(temp == 0.f && humid == 0.f){
-    //                 debug.println("Temperature and humidity = 0. Wrong sensor?");
-    //                 Alarm.delay(2100);
-    //                 continue;
-    //             } else {
-    //                 break;
-    //             }
-    //         }
-    //     }
-
-    //     if(temp == 0 && humid == 0){
-    //         debug.println("Too many NaN/0.0 values detected");
-    //         return;
-    //     }
-
-    //     debug.printf("%d: temperature: %.2f, humidity: %.2f, try: %d\n",
-    //     t, temp, humid, i);
-
-    //     // remove first buffer element if full
-    //     time_t tmp_t;
-    //     float  tmp_temp, tmp_humid;
-    //     if (buffer_time.isFull()) {
-    //         buffer_time.pull(&tmp_t);
-    //         buffer_temp.pull(&tmp_temp);
-    //         buffer_humid.pull(&tmp_humid);
-    //     }
-
-    //     // add values to buffer
-    //     buffer_time.add(t);
-    //     buffer_temp.add(temp);
-    //     buffer_humid.add(humid);
-
-    //     // activate rain
-    //     if (settings_rain.initialized && humid < settings_rain.threshold) {
-    //         debug.printf("Humidity is under threshold of (%.2f < %.2f). Start rain for %d seconds\n",
-    //                       humid, settings_rain.threshold, settings_rain.duration);
-    //         if((millis() - settings_rain.last_rain) / 1000.0f > settings_rain.minGap){
-    //             startThresholdAction
-    //             settings_rain.last_rain = millis();
-    //         } else {
-    //             debug.printf("Rain gap of %ds prevents rain (have to wait for %ds)",
-    //             settings_rain.minGap, settings_rain.minGap - (millis() - settings_rain.last_rain));
-    //         }
-    //     }
-    // }
 }
 
 // /**************************************

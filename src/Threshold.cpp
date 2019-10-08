@@ -77,6 +77,20 @@ void Threshold::checkThreshold(){
                     value,
                     greater_than ? '>' : '<',
                     threshold);
+    
+    // check gap
+    float time_diff = abs(millis()-last_activated) / 1000;
+    if(time_diff < gap){
+        debug.printf("Threshold %s: only %.2fs of %.2fs time gap reached", name.c_str(), time_diff, gap);
+        return;
+    }
+
+    if(events){
+        String description = "Threshold " + name + " reached: " + value;
+        description += greater_than ? " > " : " < ";
+        description += threshold;
+        events->add(Event(now(), Event::Type::THRESHOLD_REACHED, description), true);
+    }
     this->activate();
 }
 
@@ -153,4 +167,8 @@ bool Threshold::isInverted(){
  */
 bool Threshold::isGreaterThan(){
     return greater_than;
+}
+
+void Threshold::setEventList(RingBufCPP<Event, 100> *events){
+    this->events = events;
 }
