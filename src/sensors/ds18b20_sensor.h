@@ -1,15 +1,16 @@
-#ifndef DHT_SENSOR_H
-#define DHT_SENSOR_H
+#ifndef DS18B20_SENSOR_H
+#define DS18B20_SENSOR_H
 
 #include "sensors.h"
 #include "datatypes.h"
 //#include <DHT.h>
 // use Rob Tillaart's DHTlib because of NaN errors in Adafruit lib
-#include <dht.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
-class DHT11Sensor : public THSensor {
+class DS18B20Sensor : public THSensor {
     public:
-        DHT11Sensor(String name, uint8_t pin, DHTType type);
+        DS18B20Sensor(String name, uint8_t pin, uint8_t idx=0);
 
         float readTemperature();
         float readHumidity();
@@ -20,9 +21,11 @@ class DHT11Sensor : public THSensor {
     protected:
         bool updateValues();
 
-        dht sensor;
+        OneWire m_wire;
+        DallasTemperature m_sensors;
+
         uint8_t m_pin;
-        DHTType m_type = DHTType::UNKNOWN;
+        uint8_t m_idx;
         float m_temperature = 0;
         float m_humidity = 0;
 };

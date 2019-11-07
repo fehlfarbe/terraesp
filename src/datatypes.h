@@ -8,7 +8,8 @@ struct TimeSettings {
     int gmt_offset_sec = 0;
 };
 
-enum DHTType {
+
+enum class DHTType {
     UNKNOWN,
     DHT11,
     DHT21,

@@ -28,6 +28,7 @@
 #include "sensors/analog_sensor.h"
 #include "sensors/dht_sensor.h"
 #include "sensors/sht31_sensor.h"
+#include "sensors/ds18b20_sensor.h"
 //#include <DHT.h>
 // use Rob Tillaart's DHTlib because of NaN errors in Adafruit lib
 // #include <dht.h>
@@ -87,6 +88,7 @@ void handleButtonChange();
 void handleButtons();
 void handleSensordata();
 void handleSensors();
+void handleSensorTypes();
 void handleConfig();
 String configProcessor(const String &key);
 String indexProcessor(const String &key);
@@ -146,18 +148,18 @@ void setup() {
     server.on("/config/update", HTTP_POST, handleConfigUpdate);
     server.on("/config.json", []() {
         File dataFile = SPIFFS.open("/config.json");
-        // remove WiFi password for security reasons
-        DynamicJsonDocument doc(1024);
-        DeserializationError error = deserializeJson(doc, dataFile);
-        if (error){
-            return;
-        }
-        JsonObject wlanJSON = doc["wlan"];
-        wlanJSON["pass"] = "";
-        String json;
-        serializeJson(doc, json);
-        debug.println(json);
-        server.send(200, "text/json", json);
+        // // remove WiFi password for security reasons
+        // DynamicJsonDocument doc(1024);
+        // DeserializationError error = deserializeJson(doc, dataFile);
+        // if (error){
+        //     return;
+        // }
+        // JsonObject wlanJSON = doc["wlan"];
+        // wlanJSON["pass"] = "";
+        // String json = dataFile.readString();
+        // // serializeJson(doc, json);
+        // debug.println(json);
+        server.send(200, "text/json", dataFile.readString());
     });
 
     server.onNotFound([]() {
@@ -168,6 +170,7 @@ void setup() {
 
     server.on("/sensordata.json", handleSensordata);
     server.on("/sensors.json", handleSensors);
+    server.on("/sensortypes.json", handleSensorTypes);
     server.on("/buttons.json", handleButtons);
     server.on("/button/change", HTTP_POST, handleButtonChange);
     server.on("/reboot", []() {
@@ -308,23 +311,25 @@ void loadSettings(fs::FS &fs) {
             type.toLowerCase();
             THSensor *thsensor = nullptr;
             if (type.startsWith("dht")){
-                uint8_t dht_type = UNKNOWN;
+                DHTType dht_type = DHTType::UNKNOWN;
                 if (type == "dht22") {
-                    dht_type = DHT22;
+                    dht_type = DHTType::DHT22;
                 } else if (type ==  "am2302") {
-                    dht_type = AM2302;
+                    dht_type = DHTType::AM2302;
                 } else if (type == "dht21") {
-                    dht_type = DHT21;
+                    dht_type = DHTType::DHT21;
                 } else if (type == "dht11") {
-                    dht_type = DHT11;
+                    dht_type = DHTType::DHT11;
                 } else if (type == "dht2301") {
-                    dht_type = AM2301;
+                    dht_type = DHTType::AM2301;
                 }
-                if(dht_type != UNKNOWN){
+                if(dht_type != DHTType::UNKNOWN){
                     thsensor = new DHT11Sensor(s["name"], s["pin"], dht_type);
                 }
             } else if (type == "sht31"){
                 thsensor = new SHT31Sensor(s["name"], s["address"]);
+            } else if (type == "ds18b20"){
+                thsensor = new DS18B20Sensor(s["name"], s["pin"], s.containsKey("idx") ? s["idx"] : 0);
             } else if (type == "analog_t"){
                 thsensor = new AnalogSensor(s["name"], s["pin"], true, false);
             } else if (type == "analog_h"){
@@ -497,7 +502,7 @@ void initOTA(){
  * 
  */
 void handleRoot() {
-    if (ESPTemplateProcessor(server).send(String("/base.html"), indexProcessor)) {
+    if (ESPTemplateProcessor(server).send(String("/index.html"), indexProcessor)) {
         //debug.println("SUCCESS");
     } else {
         debug.println("FAIL");
@@ -514,7 +519,7 @@ String indexProcessor(const String &key) {
 }
 
 void handleConfig() {
-    if (ESPTemplateProcessor(server).send(String("/base.html"), configProcessor)) {
+    if (ESPTemplateProcessor(server).send(String("/index.html"), configProcessor)) {
     } else {
         server.send(404, "text/plain", "page not found.");
     }
@@ -682,6 +687,33 @@ void handleSensors(){
 }
 
 /**
+ * @brief returns all supported sensor types as JSON object
+ * 
+ */
+void handleSensorTypes(){
+    DynamicJsonDocument doc(2048);
+    JsonArray sensor_types = doc.createNestedArray("sensor_types");
+    // String* types;
+    // String types[SENSOR_TYPE_SIZE] = THSensor::getSensorTypes();
+
+    // debug.printf("%d num types\n", sizeof(types));
+    // debug.printf("types %s\n", types);
+
+    String types[SENSOR_TYPE_SIZE];
+    for(int i=(int)THSensor::SENSOR_TYPE::UNKNOWN+1; i<SENSOR_TYPE_SIZE; i++){
+        THSensor::SENSOR_TYPE type = static_cast<THSensor::SENSOR_TYPE>(i);
+        String s = THSensor::sensorToString(type);
+        // debug.printf("\th%d: %s\n", i, s.c_str());
+        JsonObject st_json = sensor_types.createNestedObject();
+        st_json["name"] = s;
+        sensor_types.add(st_json);
+    }
+    String json;
+    serializeJson(doc, json);
+    server.send(200, "text/json", json);
+}
+
+/**
  * @brief Returns JSON array of available buttons and PWM sliders
  * 
  */
@@ -696,12 +728,12 @@ void handleButtons(){
         btn["pin"] = b.pin;
         switch(b.type){
             case BTN_TOGGLE:
-                btn["state"] = (digitalRead(b.pin) ^ b.inverted) != 0;
+                btn["value"] = (digitalRead(b.pin) ^ b.inverted) != 0;
                 break;
             case BTN_SLIDER:
                 btn["min"] = b.min;
                 btn["max"] = b.max;
-                btn["state"] = ledcRead(b.channel);
+                btn["value"] = ledcRead(b.channel);
                 break;
             case BTN_INPUT:
                 debug.println("BTN_INPUT not supported!");
@@ -758,10 +790,11 @@ String configProcessor(const String &key) {
 void handleConfigUpdate() {
     debug.println("Config Update");
     debug.println(server.args());
-    debug.println(server.arg("data"));
-    DynamicJsonDocument doc(1024);
+    debug.println(server.argName(0));
+    debug.println(server.arg(server.argName(0)));
+    DynamicJsonDocument doc(4096);
     //JsonObject &rootNew = jsonBufferNew.parseObject(server.arg("data"));
-    DeserializationError error = deserializeJson(doc, server.arg("data"));
+    DeserializationError error = deserializeJson(doc, server.arg(server.argName(0)));
     
     if(error){
         debug.println("JSON config not valid");
@@ -769,6 +802,19 @@ void handleConfigUpdate() {
         server.send(503, "text/plain", "invalid JSON data");
         return;
     }
+
+    // check for fields
+    String fields[] = {"network", "sensors", "buttons", "timers", "thresholds"};
+    for(size_t i=0; i<5; i++){
+        if(!doc.containsKey(fields[i])){
+            debug.printf("JSON config misses key %s!", fields[i].c_str());
+            server.send(503, "text/plain", "invalid JSON data");
+            return;
+        }
+    }
+
+    
+    if(!doc.containsKey("network") || !doc.containsKey("sensors") || !doc.containsKey("sensors"))
 
     // don't overwrite WiFi password if empty
     // replace empty string with old password

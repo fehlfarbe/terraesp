@@ -1,0 +1,9 @@
+<div style='margin: 5px;' class='btn-group' data-toggle='buttons' ng-repeat="b in $ctrl.buttons">
+    <label class="btn btn-secondary">
+        <input ng-if="b.type==0" type="checkbox" ng-model="b.value" autocomplete="off" ng-change="change(b.name, b.value)">{{b.name}}
+        <span ng-if="b.type==1">{{b.value}}</span></input></label>
+    <input ng-if="b.type==1" type="range" ng-model="b.value" min="{{b.min}}" max="{{b.max}}" ng-change="change(b.name, b.value)"></input></label>
+</div>
+
+<!-- sensor chart -->
+<div id="chart_container" style="min-width: 400px; height: 400px; margin: 0 auto"></div>
