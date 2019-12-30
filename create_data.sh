@@ -26,3 +26,6 @@ done
 cp data_uncompressed/*.html data/
 cp data_uncompressed/app.css data/
 cp data_uncompressed/app.js data/
+
+gzip -9 -f data/app.js
+gzip -9 -f data/app.css

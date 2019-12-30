@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en" ng-app="terraespApp">
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>TerraESP</title>
+    <!-- <script src="angular.min.js"></script> -->
+    <!-- <script src="angular-route.min.js"></script> -->
+
+    <script src="app.js"></script>
+
+    <!-- <link rel="stylesheet" href="bootstrap.min.css"> -->
+    <!-- <link rel="stylesheet" href="style.css"> -->
+    <link rel="stylesheet" href="app.css">
+
+    <!-- Additional files for the Highslide popup effect -->
+    <!-- <script src="highstock.js"></script> -->
+    <!-- <script type="text/javascript" src="highslide-full.min.js"></script> -->
+    <!-- <script type="text/javascript" src="highslide.config.js" charset="utf-8"></script> -->
+    <!-- <link rel="stylesheet" type="text/css" href="highslide.css" /> -->
+
+    <!-- vue.js-->
+    <!-- <script src="vue.js"></script> -->
+    <!-- <script src="vue-router.min.js"></script>
+    <script src="axios.min.js"></script> -->
+</head>
+
+<body>
+    <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
+        <a class="navbar-brand" href="#">TerraESP</a>
+        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsExampleDefault"
+            aria-controls="navbarsExampleDefault" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="navbarsExampleDefault">
+            <ul class="navbar-nav mr-auto">
+                <li class="nav-item active">
+                    <a class="nav-link" href="#!/overview">Control</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="#!/config">Config</a>
+                </li>
+            </ul>
+            <ul class="nav navbar-nav navbar-right">
+                <li><a class="nav-link" id="current_sensors" href="#">Sensors</a></li>
+            </ul>
+            <ul class="nav navbar-nav navbar-right">
+                <li><a class="nav-link" href="/reboot">Reboot</a></li>
+            </ul>
+        </div>
+    </nav>
+    <div class="container">
+        <div class="starter-template" style="padding-top: 60px;">
+        </div>
+        <!-- <overview></overview> -->
+        <div ng-view></div>
+    </div>
+
+    <script type="text/javascript">
+
+        // Define the terraespApp module
+        angular.module('terraespApp', [
+            // ...which depends on the `overview` module
+            'overview',
+            'config'
+        ]);
+
+        // Define the `overview` module
+        angular.module('overview', ['ngRoute']);
+
+        // Define the `PhoneListController` controller on the `phonecatApp` module
+        // Register `phoneList` component, along with its associated controller and template
+        angular.
+            module('overview').
+            component('overview', {
+                templateUrl: 'home2.html',
+                controller: function OverviewController($scope, $http) {
+                    var self = this;
+
+                    // get buttons and state/value
+                    $http.get('buttons.json').then(function (response) {
+                        self.buttons = response.data;
+                    });
+
+                    // change button state/value
+                    $scope.change = function (name, value) {
+                        console.log("set " + name + " to " + value);
+                        // check for bool
+                        if (typeof value === "boolean") {
+                            value = value ? 1 : 0;
+                        }
+
+                        // create button state object
+                        var btn = {
+                            name: name,
+                            value: parseInt(value)
+                        };
+                        // POST it!
+                        $http.post('/button/change', btn).then(
+                            function (response) {
+                                console.log(response);
+                            },
+                            function (error) {
+                                console.log("Error", error);
+                            });
+                    };
+
+                    // chart options
+                    // define the options
+                    this.chartOptions = {
+                        chart: {
+                            renderTo: 'chart_container',
+                            zoomType: 'x',
+                            type: 'spline'
+                        },
+                        title: {
+                            text: 'TerraESP'
+                        },
+                        subtitle: {
+                            text: 'Click and drag in the plot area to zoom in'
+                        },
+                        xAxis: {
+                            type: 'datetime',
+                        },
+                        yAxis: {
+                            title: {
+                                text: 'C'
+                            },
+                            plotLines: []
+                            //startOnTick: false,
+                            //showFirstLabel: false
+                        },
+                        legend: {
+                            enabled: true
+                        },
+                        plotOptions: {
+                            series: {
+                                cursor: 'pointer',
+                                lineWidth: 1.0
+                            }
+                        },
+                        series: [],
+                    }
+
+                    // update chart
+                    function zip(arr1, arr2) {
+                        var res = []
+                        for (var i = 0; i < arr1.length; i++) {
+                            res.push([arr1[i], arr2[i]]);
+                        }
+                        return res
+                    }
+
+                    // get sensor data for graph
+                    // Load data asynchronously. On success, add the data
+                    // to the options and initiate the chart.
+                    // This data is obtained by exporting a GA custom report to TSV.
+                    this.loadChart = function (options) {
+                        $http.get('sensordata.json').then(function (response) {
+                            self.sensordata = response.data;
+
+                            console.log("got chart data:", self.sensordata);
+                            // convert seconds to milliseconds
+                            self.sensordata.time = self.sensordata.time.map(function (x) { return x * 1000; });
+
+                            // clear data
+                            options.series = [];
+
+                            // set new data
+                            self.sensordata.sensors.forEach(s => {
+                                if (s.hasOwnProperty("temperature")) {
+                                    //console.log(zip(json.time, s.temperature));
+                                    options.series.push({
+                                        "data": zip(self.sensordata.time, s.temperature),
+                                        "name": s.name + " temperature",
+                                        "color": "#ff0000"
+                                    });
+                                }
+                                if (s.hasOwnProperty("humidity")) {
+                                    options.series.push({
+                                        "data": zip(self.sensordata.time, s.humidity),
+                                        "name": s.name + " humidity",
+                                        "color": "#0000ff"
+                                    });
+                                }
+                            });
+
+                            // add thresholds
+                            options.yAxis.plotLines = []
+                            self.sensordata.thresholds.forEach(thresh => {
+                                options.yAxis.plotLines.push({
+                                    color: 'gray', // Color value
+                                    dashStyle: 'dot', // Style of the plot line. Default to solid
+                                    value: thresh.threshold, // Value of where the line will appear
+                                    width: 2, // Width of the line
+                                    label: {
+                                        text: thresh.name, // Content of the label.
+                                        //align: 'left', // Positioning of the label.
+                                        color: 'gray',
+                                    }
+                                });
+                            });
+
+                            // add events
+                            self.sensordata.events.forEach(e => {
+                                // Add flags for important milestones. This requires Highstock.
+                                if (Highcharts.seriesTypes.flags) {
+                                    options.series.push({
+                                        type: 'flags',
+                                        name: e.name,
+                                        color: '#333333',
+                                        shape: 'squarepin',
+                                        y: -80,
+                                        data: [
+                                            { x: e.time * 1000, text: e.description, title: e.name, shape: 'squarepin' }
+                                        ],
+                                        showInLegend: false
+                                    });
+                                }
+                            });
+
+                            setTimeout(self.loadChart, 60000, options);
+
+                            return new Highcharts.Chart(options);
+                        }, function (error) {
+                            console.log("Error loading sensordata!", error);
+                        });
+                    };
+                    this.chart = this.loadChart(this.chartOptions);
+                }
+            });
+
+        // Define the `config` module
+        angular.module('config', ['ngRoute']);
+
+        // Define the `PhoneListController` controller on the `phonecatApp` module
+        // Register `phoneList` component, along with its associated controller and template
+        angular.
+            module('config').
+            component('config', {
+                templateUrl: 'config2.html',
+                controller: function OverviewController() {
+                    this.phones = [
+                        {
+                            name: 'Nexus S',
+                            snippet: 'Fast just got faster with Nexus S.'
+                        }, {
+                            name: 'Motorola XOOM™ with Wi-Fi',
+                            snippet: 'The Next, Next Generation tablet.'
+                        }, {
+                            name: 'MOTOROLA XOOM™',
+                            snippet: 'The Next, Next Generation tablet.'
+                        }
+                    ];
+                }
+            });
+
+
+        angular.
+            module('terraespApp').
+            config(['$routeProvider',
+                function config($routeProvider) {
+                    $routeProvider.
+                        when('/overview', {
+                            template: '<overview></overview>'
+                        }).
+                        when('/config', {
+                            template: '<config></config>'
+                        }).
+                        otherwise('/overview');
+                }
+            ]);
+
+    </script>
+
+
+</body>
+
+</html>
