@@ -17,7 +17,7 @@ With this project you can control your terrarium's temperature, light, sprinkler
 
 ### Parts needed
 
-* ESP32 controller
+* ESP32 dev board
 * DHT22 / SHT31 temperature and humidity senspr
 * Relay or SSR board to control lights/pump
 * MOSFET board to control LED brightness, fan speed etc. via PWM
@@ -52,6 +52,7 @@ The WiFi password is saved without encryption on the device. Also OTA-update has
 * better webinterface for mobile users
 * better instructions
 * The current hardware setup is a mess  with many jumper cables and so on. So I want to create PCB with relays/SSR, MOSFETS, power supply --> IN PROGRESS (see below)
+* PID controller for heater/humidifier?
 
 ### PCB
 
@@ -63,7 +64,7 @@ At the moment I'm working on a PCB with several new features:
 * 2-4x MOSFETs for PWM with supply voltage (to set the brightness of a      12V LED strip or control the speed of a fan)
 * Connect multiple sensors/display/whatever via i2c bus
 
-I did a prototype with Fritzing it lacks some features so I will switch to Eagle.
+I did a prototype with Fritzing but it lacks some features so I will switch to Eagle.
 
 ![terrarium](doc/terrarium01.jpg "Terrarium")
 
