@@ -1,0 +1,1 @@
+[{"name":"SSR0","type":0,"gpio":26,"value":false},{"name":"SSR1","type":0,"gpio":27,"value":false},{"name":"SSR2","type":0,"gpio":14,"value":true},{"name":"PWM LED 1","type":1,"gpio":12,"min":0,"max":255,"value":100}]

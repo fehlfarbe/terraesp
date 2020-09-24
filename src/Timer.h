@@ -3,12 +3,13 @@
 #include <Arduino.h>
 #include <RingBufCPP.h>
 #include <datatypes.h>
+#include <Actuator.h>
 #include <Event.h>
 #include <Debug.h>
 
 class Timer {
     public:
-        Timer(String name, Button *b, int onHour, int onMinute, int offHour, int offMinute, bool inverted);
+        Timer(String name, Actuator *a, int onHour, int onMinute, int offHour, int offMinute, bool inverted);
         ~Timer();
         bool init(unsigned int time_min, OnTick_t timerCallback);
         bool isInitialized();
@@ -27,7 +28,7 @@ class Timer {
         AlarmId alarmOnId = -1;
         AlarmId alarmOffId = -1;
         uint8_t pin;
-        Button* button = nullptr;
+        Actuator* actuator = nullptr;
         int alarmOnHour;
         int alarmOnMinute;
         int alarmOffHour;

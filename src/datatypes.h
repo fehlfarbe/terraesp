@@ -18,20 +18,15 @@ enum class DHTType {
     AM2301
 };
 
-enum ButtonType {
-    BTN_TOGGLE=0,
-    BTN_SLIDER=1,
-    BTN_INPUT=2
-};
-
-struct Button {
-    String name;
-    uint8_t pin;
-    ButtonType type;
-    bool inverted = false;
-    int min = 0;
-    int max = 255;
-    uint8_t channel = 0;
+enum LEDState {
+    NONE,
+    ERROR,
+    WIFI_STATE_CONNECTING,
+    WIFI_STATE_CONNECTED,
+    WIFI_STATE_DISCONNECTED,
+    WIFI_STATE_AP,
+    OTA_ACTIVE,
+    READ_SENSORS
 };
 
 #endif

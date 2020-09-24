@@ -5,18 +5,18 @@
  * 
  * @param name Threshold name
  * @param sensor THSensor for data input
- * @param button Button to switch on/off
- * @param duration Duration for Button switch
- * @param threshold Button activation Threshold for Sensor value
- * @param greater_than true = Button active if Sensor value > threshold, false = Button active if Sensor value < threshold
- * @param inverted Is Button pin inverted?
+ * @param actuator Actuator to switch on/off
+ * @param duration Duration for Actuator switch
+ * @param threshold Actuator activation Threshold for Sensor value
+ * @param greater_than true = Actuator active if Sensor value > threshold, false = Actuator active if Sensor value < threshold
+ * @param inverted Is Actuator pin inverted?
  * @param gap Timespan between two activations
  * @param sensor_type Compare the threshold with temperature or humidity value
  */
-Threshold::Threshold(String name, THSensor* sensor, Button* button,
+Threshold::Threshold(String name, THSensor* sensor, Actuator* actuator,
                      float duration, float threshold, bool greater_than,
                      bool inverted, float gap, Threshold::SensorType sensor_type) :
- name(name), sensor(sensor), button(button), duration(duration), threshold(threshold), greater_than(greater_than), inverted(inverted), gap(gap), type(sensor_type) {
+ name(name), sensor(sensor), actuator(actuator), duration(duration), threshold(threshold), greater_than(greater_than), inverted(inverted), gap(gap), type(sensor_type) {
 
 }
 
@@ -25,7 +25,7 @@ Threshold::~Threshold(){
 };
 
 /**
- * @brief Compares current sensor value with threshold and activates Button
+ * @brief Compares current sensor value with threshold and activates Actuator
  * 
  */
 void Threshold::checkThreshold(){
@@ -95,34 +95,36 @@ void Threshold::checkThreshold(){
 }
 
 /**
- * @brief Activate the Button
+ * @brief Activate the Actuator
  * 
  */
 void Threshold::activate(){
-    if(!button){
+    if(!actuator){
         return;
     }
     debug.printf("Threshold activate %s for %.2f seconds...\n", name.c_str(), duration);
     is_active = true;
     activated = millis();
-    digitalWrite(button->pin, inverted ? LOW : HIGH);
+    // digitalWrite(actuator->getGPIO(), inverted ? LOW : HIGH);
+    actuator->setValue(HIGH);
 }
 
 /**
- * @brief Deactivate the Button
+ * @brief Deactivate the Actuator
  * 
  */
 void Threshold::deactivate(){
-    if(is_active && button){
+    if(is_active && actuator){
         debug.printf("Threshold %s deactivate after %.2f seconds...\n", name.c_str(), duration);
-        digitalWrite(button->pin, inverted ? HIGH : LOW);
+        // digitalWrite(actuator->getGPIO(), inverted ? HIGH : LOW);
+        actuator->setValue(LOW);
         is_active = false;
         last_activated = millis();
     }
 }
 
 /**
- * @brief Run this function in the main loop. It checks if a button is active and deactivates if the duration is over
+ * @brief Run this function in the main loop. It checks if a actuator is active and deactivates if the duration is over
  * 
  */
 void Threshold::update(){
@@ -152,8 +154,8 @@ float Threshold::getThreshold(){
 /**
  * @brief
  * 
- * @return true Button pins is inverted
- * @return false Button pin is not inverted
+ * @return true Actuator pins is inverted
+ * @return false Actuator pin is not inverted
  */
 bool Threshold::isInverted(){
     return inverted;
@@ -162,8 +164,8 @@ bool Threshold::isInverted(){
 /**
  * @brief 
  * 
- * @return true value > threshold -> activate Button
- * @return false value < threshold -> activate Button
+ * @return true value > threshold -> activate Actuator
+ * @return false value < threshold -> activate Actuator
  */
 bool Threshold::isGreaterThan(){
     return greater_than;

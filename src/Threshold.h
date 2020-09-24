@@ -2,6 +2,7 @@
 #define THRESHOLD_H
 #include <Arduino.h>
 #include <datatypes.h>
+#include <Actuator.h>
 #include <RingBufCPP.h>
 #include <Event.h>
 #include <Debug.h>
@@ -15,7 +16,7 @@ class Threshold {
             HUMIDITY
         };
 
-        Threshold(String name, THSensor* sensor, Button* button, 
+        Threshold(String name, THSensor* sensor, Actuator* actuator, 
                   float duration, float threshold, bool greater_than,
                   bool inverted, float gap, Threshold::SensorType sensor_type);
         ~Threshold();
@@ -37,7 +38,7 @@ class Threshold {
 
         String name;
         THSensor* sensor;
-        Button* button;
+        Actuator* actuator;
         float duration;
         float threshold;
         bool greater_than = true;

@@ -1,1 +1,0 @@
-[{"name":"SSR0","type":0,"pin":26,"value":false},{"name":"SSR1","type":0,"pin":27,"value":true},{"name":"SSR2","type":0,"pin":14,"value":false},{"name":"PWM0","type":1,"pin":13,"min":0,"max":255,"value":100},{"name":"PWM1","type":1,"pin":12,"min":0,"max":255,"value":0}]

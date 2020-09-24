@@ -3,24 +3,30 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include <HTTPClient.h>
-#include <WebServer.h>
-#include "ESPTemplateProcessor.h"
+#include <ESPAsyncWebServer.h>
+#include <ESPAsyncWiFiManager.h>
 #include <time.h>
 #include <Time.h>
 #include <TimeAlarms.h>
-#include "FS.h"
-#include "SPIFFS.h"
+#include <FS.h>
+#include <LITTLEFS.h>
 #include <ArduinoJson.h>
-#include <LinkedList.h>
+// #include <LinkedList.h>
+#include <Array.h>
 #include <RingBufHelpers.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <NeoPixelBus.h>
 #include <RingBufCPP.h>
-#include <WiFiManager.h>
 #include "Debug.h"
 
 // #define MOCKUP_DATA
 #define LED_BUILTIN 2
+
+// NeoPixel status
+#define LED_STATUS_NEO 13
+
+#define MAX_ELEMENTS 30
 
 // Buffer size for 24h / 5 minutes
 #define SENSORS_BUFSIZE 288
@@ -33,13 +39,24 @@
 // use Rob Tillaart's DHTlib because of NaN errors in Adafruit lib
 // #include <dht.h>
 #include "Threshold.h"
+#include "Actuator.h"
 #include "Timer.h"
 #include "Event.h"
 #include "datatypes.h"
 #include "utils.h"
 
+// status LED
+// Adafruit_NeoPixel statusLED(1, LED_STATUS_NEO, NEO_GRB + NEO_KHZ800);
+NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> statusLED(1, LED_STATUS_NEO);
+LEDState statusLEDState = LEDState::NONE;
+
+//WebServer
+AsyncWebServer server(80);
+DNSServer dns;
+File fsUploadFile;
+
 // WiFi
-WiFiManager wifiManager;
+AsyncWiFiManager wifiManager(&server, &dns);
 
 // settings
 // String ssid = "";
@@ -48,21 +65,17 @@ String host = "terraesp";
 // String ap_ssid = "terraesp";
 bool ap_mode = false;
 TimeSettings settings_time;
-LinkedList<Threshold*> thresholds;
-LinkedList<Button*> buttons;
-LinkedList<Timer*> timers;
+// LinkedList<Threshold*> thresholds;
+// LinkedList<Actuator*> buttons;
+// LinkedList<Timer*> timers;
+Array<Threshold *, MAX_ELEMENTS> thresholds;
+Array<Actuator *, MAX_ELEMENTS> actuators;
+Array<Timer *, MAX_ELEMENTS> timers;
 RingBufCPP<Event, 100> events;
 
 // sensors
-// dht dht_sensor;
-// DHTType dht_type = UNKNOWN;
-// uint8_t dht_pin = 0;
-LinkedList<THSensor*> sensors;
+Array<THSensor *, MAX_ELEMENTS> sensors;
 RingBufCPP<time_t, SENSORS_BUFSIZE> buffer_time;
-
-//WebServer
-WebServer server(80);
-File fsUploadFile;
 
 // Telnet
 Debug debug;
@@ -72,66 +85,87 @@ WiFiClient telnetClient;
 /**************************
  * DECLARATIONS
  *************************/
-THSensor* getSensor(String name);
-Button* getButton(String name);
+THSensor *getSensor(String name);
+Actuator *getActuator(String name);
 void randomValues(size_t count);
 void readSensors();
 time_t getNtpTime();
 bool initTimers();
 void timerCallback();
-String getContentType(String filename);
-bool exists(String path);
-bool handleFileRead(String path);
-void handleFileUpload();
-void handleConfigUpdate();
-void handleButtonChange();
-void handleButtons();
-void handleSensordata();
-void handleSensors();
-void handleSensorTypes();
-void handleConfig();
-String configProcessor(const String &key);
-String indexProcessor(const String &key);
-void handleRoot();
+
+// www
+void handleActuratorChange(AsyncWebServerRequest *request);
+void handleActurators(AsyncWebServerRequest *request);
+void handleSensordata(AsyncWebServerRequest *request);
+void handleSensors(AsyncWebServerRequest *request);
+void handleSensorTypes(AsyncWebServerRequest *request);
+void handleConfig(AsyncWebServerRequest *request);
+
 void initOTA();
-void createAP();
-bool connectWiFi();
 void loadSettings(fs::FS &fs);
+void setLEDState(LEDState state);
+void updateLEDState();
 
 /**************************
  * DEFINITIONS
  *************************/
-void setup() {
+void setup()
+{
 
     // start debug output
     Serial.begin(115200);
 
     // setup pins
-    pinMode(LED_BUILTIN, OUTPUT);
-    digitalWrite(LED_BUILTIN, HIGH);
-    digitalWrite(LED_BUILTIN, LOW);
+    // pinMode(LED_BUILTIN, OUTPUT);
+    // digitalWrite(LED_BUILTIN, HIGH);
+    // digitalWrite(LED_BUILTIN, LOW);
+
+    // status LED
+    statusLED.Begin();
+    setLEDState(LEDState::WIFI_STATE_CONNECTING);
 
     // init File system and show content
-    if (!SPIFFS.begin(true)) {
-        debug.println("Failed to mount file system");
-        return;
+    if (!LITTLEFS.begin(false))
+    {
+        setLEDState(LEDState::ERROR);
+        while (true)
+        {
+            debug.println("Failed to mount file system");
+            delay(1000);
+        }
     }
-    listDir(SPIFFS, "/", 0);
+    listDir(LITTLEFS, "/", 0);
 
     // settings
-    loadSettings(SPIFFS);
+    loadSettings(LITTLEFS);
 
     // WiFi and HTTP
-    // @todo: activate only if jumper is set
     wifiManager.setConnectTimeout(10);
-    wifiManager.autoConnect();
-    server.begin();
+    if (!wifiManager.autoConnect())
+    {
+        Serial.println("failed to connect, we should reset as see if it connects");
+        setLEDState(LEDState::ERROR);
+    }
+
+    // setup mDNS
+    char hostname[20];
+    uint64_t chipid = ESP.getEfuseMac();
+    sprintf(hostname, "esp32-%04X%08X", (uint16_t)(chipid >> 32), (uint32_t)chipid);
+    if (!MDNS.begin(hostname))
+    {
+        Serial.println("Error setting up MDNS responder!");
+    }
+    else
+    {
+        Serial.println("mDNS responder started");
+    }
 
     // sync time
     setSyncProvider(getNtpTime);
 
     // init timers
-    while (!initTimers()) {
+    while (!initTimers())
+    {
         Alarm.delay(100);
     }
 
@@ -140,67 +174,53 @@ void setup() {
     readSensors();
 
     // HTTP handles
-    // server.on("/edit", HTTP_POST, []() {
-    //     server.send(200, "text/plain", "");
-    // }, handleFileUpload);
-    server.on("/", handleRoot);
-    server.on("/config", handleConfig);
-    server.on("/config/update", HTTP_POST, handleConfigUpdate);
-    server.on("/config.json", []() {
-        File dataFile = SPIFFS.open("/config.json");
-        // // remove WiFi password for security reasons
-        // DynamicJsonDocument doc(1024);
-        // DeserializationError error = deserializeJson(doc, dataFile);
-        // if (error){
-        //     return;
-        // }
-        // JsonObject wlanJSON = doc["wlan"];
-        // wlanJSON["pass"] = "";
-        // String json = dataFile.readString();
-        // // serializeJson(doc, json);
-        // debug.println(json);
-        server.send(200, "text/json", dataFile.readString());
-    });
+    server.begin();
+    server.serveStatic("/", LITTLEFS, "/www/");
 
-    server.onNotFound([]() {
-        if (!handleFileRead(server.uri())) {
-        server.send(404, "text/plain", "FileNotFound");
-        }
-    });
+    // API
+    server.on("/api/actuators", HTTP_GET, handleActurators);
+    server.on("/api/actuator/change", HTTP_POST, handleActuratorChange);
+    server.on("/api/sensors/all", HTTP_GET, handleSensordata);
+    server.on("/api/config", HTTP_GET, handleConfig);
+    // server.serveStatic("/api/config", LITTLEFS, "/www/config.json");
 
-    server.on("/sensordata.json", handleSensordata);
-    server.on("/sensors.json", handleSensors);
-    server.on("/sensortypes.json", handleSensorTypes);
-    server.on("/buttons.json", handleButtons);
-    server.on("/button/change", HTTP_POST, handleButtonChange);
-    server.on("/reboot", []() {
-        server.send(200, "text/json", "{\"answer\": \"ok\"}");
-        Alarm.delay(100);
-        ESP.restart();
-    });
-    server.on("/time", []() { // return current device time
-        String time = String(now());
-        server.send(200, "text/json", "{\"time\": \"" + time + "\"}");
-    });
-    server.on("/stats.json", []() { // return current device time
-        server.send(200, "text/json", "{\"free_heap\": \"" + String(ESP.getFreeHeap()) + "\", "
-                                      "\"chip_rev\" : \"" + ESP.getChipRevision() + "\", "
-                                      "\"sdk\" : \"" + ESP.getSdkVersion() + "\", "
-                                      "\"wifi\" : \"" + WiFi.RSSI() + "\", "
-                                      "\"cpu_freq\" : \"" + ESP.getCpuFreqMHz() + "\"}");
-    });
+    // ToDo: new async server
+    // server.on("/", handleRoot);
+    // server.on("/config", handleConfig);
+    // server.on("/config/update", HTTP_POST, handleConfigUpdate);
+    // server.on("/config.json", []() {
+    //     File dataFile = LITTLEFS.open("/config.json");
+    //     server.send(200, "text/json", dataFile.readString());
+    // });
 
-    // static files (CSS, JS, ...)
-    // server.serveStatic("/bootstrap.min.js", SPIFFS, "/bootstrap.min.js.gz");
-    // server.serveStatic("/bootstrap.min.js.map", SPIFFS, "/bootstrap.min.js.map.gz");
-    // server.serveStatic("/bootstrap.min.css", SPIFFS, "/bootstrap.min.css.gz");
-    // server.serveStatic("/bootstrap.min.css.map", SPIFFS, "/bootstrap.min.css.map.gz");
-    // server.serveStatic("/highcharts.js", SPIFFS, "/highcharts.js");
-    // server.serveStatic("/highslide.config.js", SPIFFS, "/highslide.config.js");
-    // server.serveStatic("/highslide.css", SPIFFS, "/highslide.css");
-    // server.serveStatic("/highslide-full.min.js", SPIFFS, "/highslide-full.min.js");
-    // server.serveStatic("/jquery-3.1.1.min.js", SPIFFS, "/jquery-3.1.1.min.js");
-    // server.serveStatic("/popper.min.js", SPIFFS, "/popper.min.js");
+    // server.onNotFound([]() {
+    //     if (!handleFileRead(server.uri())) {
+    //     server.send(404, "text/plain", "FileNotFound");
+    //     }
+    // });
+
+    // server.on("/sensordata.json", handleSensordata);
+    // server.on("/sensors.json", handleSensors);
+    // server.on("/sensortypes.json", handleSensorTypes);
+    // server.on("/buttons.json", handleButtons);
+    // server.on("/actuator/change", HTTP_POST, handleButtonChange);
+    // server.on("/reboot", []() {
+    //     server.send(200, "text/json", "{\"answer\": \"ok\"}");
+    //     Alarm.delay(100);
+    //     ESP.restart();
+    // });
+    // server.on("/time", []() { // return current device time
+    //     String time = String(now());
+    //     server.send(200, "text/json", "{\"time\": \"" + time + "\"}");
+    // });
+    // server.on("/stats.json", []() { // return current device time
+    //     server.send(200, "text/json", "{\"free_heap\": \"" + String(ESP.getFreeHeap()) + "\", "
+    //                                   "\"chip_rev\" : \"" + ESP.getChipRevision() + "\", "
+    //                                   "\"sdk\" : \"" + ESP.getSdkVersion() + "\", "
+    //                                   "\"wifi\" : \"" + WiFi.RSSI() + "\", "
+    //                                   "\"LITTLEFS_used\" : \"" + LITTLEFS.usedBytes() + "\", "
+    //                                   "\"cpu_freq\" : \"" + ESP.getCpuFreqMHz() + "\"}");
+    // });
 
     // init OTA update
     // @todo: activate only if jumper is set
@@ -211,14 +231,19 @@ void setup() {
     telnetServer.begin();
     telnetServer.setNoDelay(true);
 
+    setLEDState(LEDState::NONE);
+
 #ifdef MOCKUP_DATA
     debug.print("Creating mockup data...");
     time_t t = now();
-    for(size_t n=0; n<SENSORS_BUFSIZE; n++){
+    for (size_t n = 0; n < SENSORS_BUFSIZE; n++)
+    {
         buffer_time.add(t++, true);
-        for(size_t i=0; i<sensors.size(); i++){
+        for (size_t i = 0; i < sensors.size(); i++)
+        {
             THSensor *s = sensors.get(i);
-            if(s->isEnabled()){
+            if (s->isEnabled())
+            {
                 sensors.get(i)->updateTH();
                 digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
             }
@@ -228,17 +253,15 @@ void setup() {
 #endif
 }
 
-void loop() {
+void loop()
+{
     // check WiFi an reconnect if necessary
-    // if (WiFi.status() != WL_CONNECTED and !ap_mode) {
-    //     // connectWiFi();
-    //     digitalWrite(LED_BUILTIN, LOW);
-    // } else {
-    //     digitalWrite(LED_BUILTIN, HIGH);
-    // }
-    if(WiFi.status() == WL_CONNECTED){
+    if (WiFi.status() == WL_CONNECTED)
+    {
         digitalWrite(LED_BUILTIN, HIGH);
-    } else {
+    }
+    else
+    {
         debug.println(WiFi.status());
         digitalWrite(LED_BUILTIN, LOW);
         wifiManager.autoConnect();
@@ -250,17 +273,18 @@ void loop() {
     ArduinoOTA.handle();
 
     // sync time
-    if (timeStatus() == timeNotSet) {
+    if (timeStatus() == timeNotSet)
+    {
         debug.println("Waiting for synced time");
     }
 
-    // serve HTTP content
-    server.handleClient();
-
     // add new telnet Clients
-    if (telnetServer.hasClient()) {
-        if (!telnetClient || !telnetClient.connected()) {
-            if (telnetClient) {
+    if (telnetServer.hasClient())
+    {
+        if (!telnetClient || !telnetClient.connected())
+        {
+            if (telnetClient)
+            {
                 telnetClient.stop();
                 debug.println("Telnet Client Stop");
             }
@@ -271,9 +295,10 @@ void loop() {
         }
     }
 
-    // update thresholds ->deactivates thresholds after duration
-    for(size_t i=0; i<thresholds.size(); i++){
-        Threshold *t = thresholds.get(i);
+    // update thresholds -> deactivates thresholds after duration
+    for (size_t i = 0; i < thresholds.size(); i++)
+    {
+        Threshold *t = thresholds[i];
         t->update();
     }
 
@@ -286,140 +311,168 @@ void loop() {
  * 
  * @param fs FileSystem
  */
-void loadSettings(fs::FS &fs) {
-    File dataFile = fs.open("/config.json");
+void loadSettings(fs::FS &fs)
+{
+    File dataFile = fs.open("/config.json", FILE_READ);
     String json = dataFile.readString();
     dataFile.close();
     debug.println(json);
     DynamicJsonDocument doc(4096);
     DeserializationError error = deserializeJson(doc, json);
-    if (error) {
+    if (error)
+    {
         debug.println("----- parseObject() for config.json failed -----");
         debug.println(error.c_str());
         return;
-    } else {
+    }
+    else
+    {
         // load sensor settings
         JsonArray sensorsJSON = doc["sensors"];
-        for (auto s : sensorsJSON) {
+        for (auto s : sensorsJSON)
+        {
             debug.print("Got new sensor ");
             debug.print(s["type"].as<String>());
             debug.print(" on pin/address ");
             debug.print(s["pin"].as<String>());
             debug.print(" ");
             debug.println(s["address"].as<String>());
-            String type((const char*)s["type"]);
+            String type((const char *)s["type"]);
             type.toLowerCase();
             THSensor *thsensor = nullptr;
-            if (type.startsWith("dht")){
+            if (type.startsWith("dht"))
+            {
                 DHTType dht_type = DHTType::UNKNOWN;
-                if (type == "dht22") {
+                if (type == "dht22")
+                {
                     dht_type = DHTType::DHT22;
-                } else if (type ==  "am2302") {
+                }
+                else if (type == "am2302")
+                {
                     dht_type = DHTType::AM2302;
-                } else if (type == "dht21") {
+                }
+                else if (type == "dht21")
+                {
                     dht_type = DHTType::DHT21;
-                } else if (type == "dht11") {
+                }
+                else if (type == "dht11")
+                {
                     dht_type = DHTType::DHT11;
-                } else if (type == "dht2301") {
+                }
+                else if (type == "dht2301")
+                {
                     dht_type = DHTType::AM2301;
                 }
-                if(dht_type != DHTType::UNKNOWN){
-                    thsensor = new DHT11Sensor(s["name"], s["pin"], dht_type);
+                if (dht_type != DHTType::UNKNOWN)
+                {
+                    thsensor = new DHT11Sensor(s["name"], s["gpio"], dht_type);
                 }
-            } else if (type == "sht31"){
+            }
+            else if (type == "sht31")
+            {
                 thsensor = new SHT31Sensor(s["name"], s["address"]);
-            } else if (type == "ds18b20"){
-                thsensor = new DS18B20Sensor(s["name"], s["pin"], s.containsKey("idx") ? s["idx"] : 0);
-            } else if (type == "analog_t"){
-                thsensor = new AnalogSensor(s["name"], s["pin"], true, false);
-            } else if (type == "analog_h"){
-                thsensor = new AnalogSensor(s["name"], s["pin"], false, true);
-            } else {
+            }
+            else if (type == "ds18b20")
+            {
+                thsensor = new DS18B20Sensor(s["name"], s["gpio"], s.containsKey("idx") ? s["idx"] : 0);
+            }
+            else if (type == "analog_t")
+            {
+                thsensor = new AnalogSensor(s["name"], s["gpio"], true, false);
+            }
+            else if (type == "analog_h")
+            {
+                thsensor = new AnalogSensor(s["name"], s["gpio"], false, true);
+            }
+            else
+            {
                 debug.println(" unknown");
             }
 
-            if(thsensor){
-                if(!s["enabled"].isNull()){
+            if (thsensor)
+            {
+                if (!s["enabled"].isNull())
+                {
                     thsensor->setEnabled(s["enabled"]);
                 }
-                sensors.add(thsensor);
+                sensors.push_back(thsensor);
             }
         }
 
-        // load buttons/actors
-        JsonArray buttonsJSON = doc["buttons"];
+        // load actuators
+        JsonArray actuatorsJSON = doc["actuators"];
         uint8_t channel = 0;
-        for (auto b : buttonsJSON) {
-            Button *btn = new Button;
-            btn->name = (const char *) b["name"];
-            btn->pin = (uint8_t) b["pin"];
-            btn->type = strcmp(b["type"], "toggle") ? BTN_SLIDER : BTN_TOGGLE;
-            btn->inverted = (bool) b["inverted"];
-            //btn->min = (int) b["min"];
-            //btn->max = (int) b["max"];
-            buttons.add(btn);
+        for (auto a : actuatorsJSON)
+        {
+            String name = a["name"];
+            uint16_t gpio = (uint16_t)a["gpio"];
+            ActuatorType type = strcmp(a["type"], "toggle") ? ActuatorType::ACTUATOR_SLIDER : ActuatorType::ACTUATOR_TOGGLE;
+            bool inverted = a["inverted"];
+            uint16_t min = a["min"];
+            uint16_t max = a["max"];
 
-            // set pin mode
-            switch(btn->type){
-                case BTN_TOGGLE:
-                    pinMode(btn->pin, OUTPUT);
-                    digitalWrite(btn->pin, (uint8_t) btn->inverted);
-                    break;
-                case BTN_SLIDER:
-                    // Initialize channels
-                    // channels 0-15, resolution 1-16 bits, freq limits depend on resolution
-                    // ledcSetup(uint8_t channel, uint32_t freq, uint8_t resolution_bits);
-                    btn->channel = channel;
-                    ledcAttachPin(btn->pin, channel); // assign RGB led pins to channels
-                    ledcSetup(channel, 12000, 8); // 12 kHz PWM, 8-bit resolution
-                    channel++;
-                    break;
-                default:
-                    break;
+            auto actuator = new Actuator(name, gpio, type, inverted, min, max, channel);
+            actuators.push_back(actuator);
+            debug.println("Got new " + actuator->toString());
+
+            // use different channel for next PWM slider
+            if (type == ActuatorType::ACTUATOR_SLIDER)
+            {
+                channel++;
             }
         }
 
         // load timer settings
         JsonArray timerJSON = doc["timers"];
-        for (auto t : timerJSON) {
-            Button *button = getButton(t["button"].as<String>());
-            if(button){
+        for (auto t : timerJSON)
+        {
+            Actuator *actuator = getActuator(t["actuator"].as<String>());
+            if (actuator)
+            {
                 Timer *timer = new Timer(t["name"].as<String>(),
-                                          button,
-                                          split(String((const char *) t["on"]), ':', 0).toInt(),
-                                          split(String((const char *) t["on"]), ':', 1).toInt(),
-                                          split(String((const char *) t["off"]), ':', 0).toInt(),
-                                          split(String((const char *) t["off"]), ':', 1).toInt(),
-                                          t["inverted"]);
+                                         actuator,
+                                         split(String((const char *)t["on"]), ':', 0).toInt(),
+                                         split(String((const char *)t["on"]), ':', 1).toInt(),
+                                         split(String((const char *)t["off"]), ':', 0).toInt(),
+                                         split(String((const char *)t["off"]), ':', 1).toInt(),
+                                         t["inverted"]);
                 timer->setEventList(&events);
-                timers.add(timer);                  
+                timers.push_back(timer);
             }
         };
 
         // load thresholds
         JsonArray thresholdsJSON = doc["thresholds"];
-        for (auto s : thresholdsJSON) {
-            THSensor* sensor = getSensor(s["sensor"].as<String>());
-            Button* button = getButton(s["button"].as<String>());
-            // if sensor and button exist create threshold
-            if(sensor && button){
+        for (auto s : thresholdsJSON)
+        {
+            THSensor *sensor = getSensor(s["sensor"].as<String>());
+            Actuator *actuator = getActuator(s["actuator"].as<String>());
+            // if sensor and actuator exist create threshold
+            if (sensor && actuator)
+            {
                 Threshold::SensorType sensor_type = Threshold::SensorType::UNKNOWN;
-                if(s["sensor_type"].as<String>() == "humidity"){
+                if (s["sensor_type"].as<String>() == "humidity")
+                {
                     sensor_type = Threshold::SensorType::HUMIDITY;
-                } else if(s["sensor_type"].as<String>() == "temperature"){
+                }
+                else if (s["sensor_type"].as<String>() == "temperature")
+                {
                     sensor_type = Threshold::SensorType::TEMPERATURE;
-                } else {
+                }
+                else
+                {
                     debug.printf("Threshold %s sensor type %s is unknown\n", s["name"].as<String>().c_str(), s["sensor_type"].as<String>().c_str());
                 }
 
                 bool greater_than = false;
-                if(s["comparator"].as<String>() == ">"){
+                if (s["comparator"].as<String>() == ">")
+                {
                     greater_than = true;
                 }
 
                 Threshold *thresh = new Threshold(s["name"].as<String>(),
                                                   sensor,
-                                                  button,
+                                                  actuator,
                                                   s["duration"],
                                                   s["threshold"],
                                                   greater_than,
@@ -427,14 +480,13 @@ void loadSettings(fs::FS &fs) {
                                                   s["gap"],
                                                   sensor_type);
                 thresh->setEventList(&events);
-                thresholds.add(thresh);
+                thresholds.push_back(thresh);
             }
-            
         }
 
         // general settings
         JsonObject generalJSON = doc["general"];
-        settings_time.dst = (bool)generalJSON["dst"]; // daylight saving time
+        settings_time.dst = (bool)generalJSON["dst"];                  // daylight saving time
         settings_time.gmt_offset_sec = (int)generalJSON["gmt_offset"]; // daylight saving time
     }
 }
@@ -449,7 +501,8 @@ void loadSettings(fs::FS &fs) {
  * @brief Inits the OTA Update
  * 
  */
-void initOTA(){
+void initOTA()
+{
     // Port defaults to 3232
     // ArduinoOTA.setPort(3232);
 
@@ -462,30 +515,43 @@ void initOTA(){
 
     ArduinoOTA.onStart([]() {
         String type;
-        if (ArduinoOTA.getCommand() == U_FLASH){
+        if (ArduinoOTA.getCommand() == U_FLASH)
+        {
             type = "sketch";
         }
-        else {
-            // U_SPIFFS
+        else
+        {
+            // U_LITTLEFS
             type = "filesystem";
         }
 
-        // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+        // NOTE: if updating LITTLEFS this would be the place to unmount LITTLEFS using LITTLEFS.end()
         debug.println("Start updating " + type);
     });
     ArduinoOTA.onEnd([]() {
         debug.println("\nEnd");
+        ESP.restart();
     });
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+        // setLEDState(LEDState::OTA_ACTIVE);
+        RgbColor updatedColor = RgbColor::LinearBlend(RgbColor(50, 0, 0), RgbColor(0, 100, 0), (progress / (float)total));
+        statusLED.SetPixelColor(0, updatedColor);
+        statusLED.Show();
         debug.printf("Progress: %u%%\r", (progress / (total / 100)));
     });
     ArduinoOTA.onError([](ota_error_t error) {
         debug.printf("Error[%u]: ", error);
-        if (error == OTA_AUTH_ERROR) debug.println("Auth Failed");
-        else if (error == OTA_BEGIN_ERROR) debug.println("Begin Failed");
-        else if (error == OTA_CONNECT_ERROR) debug.println("Connect Failed");
-        else if (error == OTA_RECEIVE_ERROR) debug.println("Receive Failed");
-        else if (error == OTA_END_ERROR) debug.println("End Failed");
+        setLEDState(LEDState::ERROR);
+        if (error == OTA_AUTH_ERROR)
+            debug.println("Auth Failed");
+        else if (error == OTA_BEGIN_ERROR)
+            debug.println("Begin Failed");
+        else if (error == OTA_CONNECT_ERROR)
+            debug.println("Connect Failed");
+        else if (error == OTA_RECEIVE_ERROR)
+            debug.println("Receive Failed");
+        else if (error == OTA_END_ERROR)
+            debug.println("End Failed");
     });
     ArduinoOTA.begin();
     debug.println("OTA update ready");
@@ -496,72 +562,6 @@ void initOTA(){
  * HTTP handler
  * 
  *************************************/
-
-/**
- * @brief sends the root site with processed template
- * 
- */
-void handleRoot() {
-    if (ESPTemplateProcessor(server).send(String("/index.html"), indexProcessor)) {
-        //debug.println("SUCCESS");
-    } else {
-        debug.println("FAIL");
-        server.send(404, "text/plain", "page not found.");
-    }
-}
-
-String indexProcessor(const String &key) {
-    if (key == "CONTENT") {
-        File dataFile = SPIFFS.open("/home.html");
-        return dataFile.readString();
-    }
-    return "";
-}
-
-void handleConfig() {
-    if (ESPTemplateProcessor(server).send(String("/index.html"), configProcessor)) {
-    } else {
-        server.send(404, "text/plain", "page not found.");
-    }
-}
-
-/**
- * @brief Get the Content Type string
- * 
- * @param filename path to file
- * @return String Mimetype
- */
-String getContentType(String filename) {
-  if (server.hasArg("download")) {
-    return "application/octet-stream";
-  } else if (filename.endsWith(".htm")) {
-    return "text/html";
-  } else if (filename.endsWith(".html")) {
-    return "text/html";
-  } else if (filename.endsWith(".css")) {
-    return "text/css";
-  } else if (filename.endsWith(".js")) {
-    return "application/javascript";
-  } else if (filename.endsWith(".png")) {
-    return "image/png";
-  } else if (filename.endsWith(".gif")) {
-    return "image/gif";
-  } else if (filename.endsWith(".jpg")) {
-    return "image/jpeg";
-  } else if (filename.endsWith(".ico")) {
-    return "image/x-icon";
-  } else if (filename.endsWith(".xml")) {
-    return "text/xml";
-  } else if (filename.endsWith(".pdf")) {
-    return "application/x-pdf";
-  } else if (filename.endsWith(".zip")) {
-    return "application/x-zip";
-  } else if (filename.endsWith(".gz")) {
-    return "application/x-gzip";
-  }
-  return "text/plain";
-}
-
 /**
  * @brief Checks if path exists
  * 
@@ -569,81 +569,70 @@ String getContentType(String filename) {
  * @return true exists
  * @return false does not exist
  */
-bool exists(String path){
-  bool yes = false;
-  File file = SPIFFS.open(path, "r");
-  if(!file.isDirectory()){
-    yes = true;
-  }
-  file.close();
-  return yes;
-}
-
-/**
- * @brief Checks if requested file or gzip compressed file exists and sens it to the client
- * 
- * @param path URL to file
- * @return true path or path.gz found
- * @return false  path or path.gz not found
- */
-bool handleFileRead(String path) {
-  debug.println("handleFileRead: " + path);
-  String contentType = getContentType(path);
-  String pathWithGz = path + ".gz";
-  if (exists(pathWithGz) || exists(path)) {
-    if (exists(pathWithGz)) {
-      path += ".gz";
+bool exists(String path)
+{
+    bool exists = false;
+    File file = LITTLEFS.open(path, FILE_READ);
+    if (!file.isDirectory())
+    {
+        exists = true;
     }
-    File file = SPIFFS.open(path, "r");
-    server.streamFile(file, contentType);
     file.close();
-    return true;
-  }
-  return false;
+    return exists;
 }
 
 /**
  * @brief Sends buffered timestamps and sensor value for all sensors as JSON object for charts, ...
  * 
  */
-void handleSensordata() {
+void handleSensordata(AsyncWebServerRequest *request)
+{
     DynamicJsonDocument doc(38629);
     JsonArray sensor_array = doc.createNestedArray("sensors");
     JsonArray thresholds_array = doc.createNestedArray("thresholds");
     JsonArray events_array = doc.createNestedArray("events");
     JsonArray time_array = doc.createNestedArray("time");
 
-    for(size_t i=0; i<buffer_time.numElements(); i++){
+    for (size_t i = 0; i < buffer_time.numElements(); i++)
+    {
         time_array.add(*buffer_time.peek(i));
     }
-   for (size_t i=0; i < sensors.size(); i++) {
-        THSensor *s = sensors.get(i);
-        if(s->isEnabled()){
+    for (size_t i = 0; i < sensors.size(); i++)
+    {
+        THSensor *s = sensors[i];
+        if (s->isEnabled())
+        {
             JsonObject sensor = sensor_array.createNestedObject();
             sensor["name"] = s->getName();
-            if(s->hasTemperature()){
+            if (s->hasTemperature())
+            {
                 JsonArray t = sensor.createNestedArray("temperature");
-                for(size_t j=0; j<s->buffer_t.numElements(); j++){
+                for (size_t j = 0; j < s->buffer_t.numElements(); j++)
+                {
                     t.add(*s->buffer_t.peek(j));
                 }
             }
-            if(s->hasHumidity()){
+            if (s->hasHumidity())
+            {
                 JsonArray h = sensor.createNestedArray("humidity");
-                for(size_t j=0; j<s->buffer_h.numElements(); j++){
+                for (size_t j = 0; j < s->buffer_h.numElements(); j++)
+                {
                     h.add(*s->buffer_h.peek(j));
                 }
             }
         }
     }
-    for (size_t i=0; i < thresholds.size(); i++) {
-        Threshold *thresh = thresholds.get(i);
+    for (size_t i = 0; i < thresholds.size(); i++)
+    {
+        Threshold *thresh = thresholds[i];
         JsonObject t = thresholds_array.createNestedObject();
         t["name"] = thresh->getName();
         t["threshold"] = thresh->getThreshold();
         t["greater_than"] = thresh->isGreaterThan();
     }
-    for (size_t i=0; i < events.numElements(); i++) {
-        Event* event = events.peek(i);
+    for (size_t i = 0; i < events.numElements(); i++)
+    {
+        Event *event = events.peek(i);
         JsonObject e = events_array.createNestedObject();
         e["time"] = event->getTime();
         e["type"] = event->getType();
@@ -651,29 +640,35 @@ void handleSensordata() {
         e["description"] = event->getDescription();
     }
 
-    String json;
-    serializeJson(doc, json);
-
-    server.send(200, "text/json", json);
+    // send JSON response
+    AsyncResponseStream *response = request->beginResponseStream("application/json");
+    serializeJson(doc, debug);
+    serializeJson(doc, *response);
+    request->send(response);
 }
 
 /**
  * @brief Reads current sensor values and returns sensor name, values and current time as JSON object
  * 
  */
-void handleSensors(){
+void handleSensors(AsyncWebServerRequest *request)
+{
     DynamicJsonDocument doc(2048);
     JsonArray sensor_array = doc.createNestedArray("sensors");
 
-    for (size_t i=0; i < sensors.size(); i++) {
-        THSensor *s = sensors.get(i);
-        if(s->isEnabled()){
+    for (size_t i = 0; i < sensors.size(); i++)
+    {
+        THSensor *s = sensors[i];
+        if (s->isEnabled())
+        {
             JsonObject sensor = sensor_array.createNestedObject();
             sensor["name"] = s->getName();
-            if(s->hasTemperature()){
+            if (s->hasTemperature())
+            {
                 sensor["temperature"] = s->readTemperature();
             }
-            if(s->hasHumidity()){
+            if (s->hasHumidity())
+            {
                 sensor["humidity"] = s->readHumidity();
             }
         }
@@ -681,16 +676,19 @@ void handleSensors(){
 
     doc["time"] = now();
 
-    String json;
-    serializeJson(doc, json);
-    server.send(200, "text/json", json);
+    // send JSON response
+    AsyncResponseStream *response = request->beginResponseStream("application/json");
+    serializeJson(doc, debug);
+    serializeJson(doc, *response);
+    request->send(response);
 }
 
 /**
  * @brief returns all supported sensor types as JSON object
  * 
  */
-void handleSensorTypes(){
+void handleSensorTypes(AsyncWebServerRequest *request)
+{
     DynamicJsonDocument doc(2048);
     JsonArray sensor_types = doc.createNestedArray("sensor_types");
     // String* types;
@@ -700,7 +698,8 @@ void handleSensorTypes(){
     // debug.printf("types %s\n", types);
 
     String types[SENSOR_TYPE_SIZE];
-    for(int i=(int)THSensor::SENSOR_TYPE::UNKNOWN+1; i<SENSOR_TYPE_SIZE; i++){
+    for (int i = (int)THSensor::SENSOR_TYPE::UNKNOWN + 1; i < SENSOR_TYPE_SIZE; i++)
+    {
         THSensor::SENSOR_TYPE type = static_cast<THSensor::SENSOR_TYPE>(i);
         String s = THSensor::sensorToString(type);
         // debug.printf("\th%d: %s\n", i, s.c_str());
@@ -708,192 +707,134 @@ void handleSensorTypes(){
         st_json["name"] = s;
         sensor_types.add(st_json);
     }
-    String json;
-    serializeJson(doc, json);
-    server.send(200, "text/json", json);
+
+    // send JSON response
+    AsyncResponseStream *response = request->beginResponseStream("application/json");
+    serializeJson(doc, debug);
+    serializeJson(doc, *response);
+    request->send(response);
 }
 
 /**
  * @brief Returns JSON array of available buttons and PWM sliders
  * 
  */
-void handleButtons(){
-    DynamicJsonDocument doc(1024);
+void handleActurators(AsyncWebServerRequest *request)
+{
+    DynamicJsonDocument doc(2048);
     // JsonArray root = doc.createNestedArray();
-    for(size_t i=0; i<buttons.size(); i++){
-        Button b = *buttons.get(i);
-        JsonObject btn = doc.createNestedObject();
-        btn["name"] = b.name;
-        btn["type"] = (uint8_t)b.type;
-        btn["pin"] = b.pin;
-        switch(b.type){
-            case BTN_TOGGLE:
-                btn["value"] = (digitalRead(b.pin) ^ b.inverted) != 0;
-                break;
-            case BTN_SLIDER:
-                btn["min"] = b.min;
-                btn["max"] = b.max;
-                btn["value"] = ledcRead(b.channel);
-                break;
-            case BTN_INPUT:
-                debug.println("BTN_INPUT not supported!");
-                break;
-        }
+    for (const auto &a : actuators)
+    {
+        JsonObject actuator = doc.createNestedObject();
+        actuator["name"] = a->getName();
+        actuator["type"] = (uint8_t)a->getType();
+        actuator["gpio"] = a->getGPIO();
+        actuator["value"] = a->getType() == ActuatorType::ACTUATOR_TOGGLE ? (bool)a->getValue() : a->getValue();
+        actuator["min"] = a->getMin();
+        actuator["max"] = a->getMax();
     }
-    String s;
-    serializeJson(doc, s);
-    server.send(200, "text/json", s);
+
+    // send JSON response
+    AsyncResponseStream *response = request->beginResponseStream("application/json");
+    serializeJson(doc, debug);
+    serializeJson(doc, *response);
+    request->send(response);
 }
 
 /**
- * @brief Handles button click and slider change
+ * @brief Handles actuator click and slider change
  * 
  */
-void handleButtonChange(){
-    String name = server.arg("name"); //root["name"];
-    uint8_t value = server.arg("value").toInt();
-    debug.printf("Button changed: %s -> %d\n", name.c_str(), value);
-    for(size_t i=0; i<buttons.size(); i++) {
-        Button b = *buttons.get(i);
-        if(name == b.name){
-            switch(b.type){
-                case BTN_TOGGLE:
-                    debug.println(value ^ b.inverted);
-                    digitalWrite(b.pin, value ^ b.inverted);
-                    events.add(Event(now(), Event::Type::BUTTON_TOGGLE, "Set Button " + b.name + " " + String(value ^ b.inverted)));
-                    break;
-                case BTN_SLIDER:
-                    if(value <= b.max && value >= b.min){
-                        //analogWrite(b.pin, value);
-                        debug.printf("Change PWM on channel %d to value: %d\n", b.channel, value);
-                        ledcWrite(b.channel, value);
-                        events.add(Event(now(), Event::Type::BUTTON_TOGGLE, "Set slider " + b.name + " to " + value));
-                    }
-                    break;
-                default:
-                    break;
-            }
+void handleActuratorChange(AsyncWebServerRequest *request)
+{
+    if (request->method() == HTTP_POST)
+    {
+        debug.printf("Change actuator %s to %d\n", request->arg("name").c_str(), request->arg("value").toInt());
+        Actuator *actuator = getActuator(request->arg("name"));
+        if (actuator)
+        {
+            actuator->setValue(request->arg("value").toInt());
         }
+        request->send(200);
     }
-    server.send(200, "text/plain", "ok");
+    else
+    {
+        debug.println("Actuator change wrong method");
+    }
 }
 
-String configProcessor(const String &key) {
-    if (key == "CONTENT") {
-        File dataFile = SPIFFS.open("/config.html");
-        return dataFile.readString();
-    }
-    return "";
+void handleConfig(AsyncWebServerRequest *request)
+{
+    File config = LITTLEFS.open("/config.json", FILE_READ);
+    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", config.readString());
+    request->send(response);
+    config.close();
+
+    // ToDo
+    // debug.println("Config Update");
+    // debug.println(server.args());
+    // debug.println(server.argName(0));
+    // debug.println(server.arg(server.argName(0)));
+    // DynamicJsonDocument doc(4096);
+    // //JsonObject &rootNew = jsonBufferNew.parseObject(server.arg("data"));
+    // DeserializationError error = deserializeJson(doc, server.arg(server.argName(0)));
+
+    // if(error){
+    //     debug.println("JSON config not valid");
+    //     debug.println(error.c_str());
+    //     server.send(503, "text/plain", "invalid JSON data");
+    //     return;
+    // }
+
+    // // check for fields
+    // String fields[] = {"network", "sensors", "buttons", "timers", "thresholds"};
+    // for(size_t i=0; i<5; i++){
+    //     if(!doc.containsKey(fields[i])){
+    //         debug.printf("JSON config misses key %s!", fields[i].c_str());
+    //         server.send(503, "text/plain", "invalid JSON data");
+    //         return;
+    //     }
+    // }
+
+    // if(!doc.containsKey("network") || !doc.containsKey("sensors") || !doc.containsKey("sensors"))
+
+    // // don't overwrite WiFi password if empty
+    // // replace empty string with old password
+    // if(doc["wlan"]["pass"].as<String>().length() == 0){
+    //     File dataFile = LITTLEFS.open("/config.json", "r");
+    //     DynamicJsonDocument doc_old(1024);
+    //     DeserializationError error_old = deserializeJson(doc_old, dataFile);
+    //     if(!error_old){
+    //         doc["wlan"]["pass"] = doc_old["wlan"]["pass"].as<String>();
+    //         dataFile.close();
+    //     }
+    // }
+
+    // // replace config file
+    // File dataFile = LITTLEFS.open("/config.json", "w");
+    // serializeJson(doc, dataFile);
+    // dataFile.close();
+    // // send success
+    // server.send(200, "text/plain", "ok");
+    // Alarm.delay(100);
+    // // restart to read clean values
+    // ESP.restart();
 }
-
-
-void handleConfigUpdate() {
-    debug.println("Config Update");
-    debug.println(server.args());
-    debug.println(server.argName(0));
-    debug.println(server.arg(server.argName(0)));
-    DynamicJsonDocument doc(4096);
-    //JsonObject &rootNew = jsonBufferNew.parseObject(server.arg("data"));
-    DeserializationError error = deserializeJson(doc, server.arg(server.argName(0)));
-    
-    if(error){
-        debug.println("JSON config not valid");
-        debug.println(error.c_str());
-        server.send(503, "text/plain", "invalid JSON data");
-        return;
-    }
-
-    // check for fields
-    String fields[] = {"network", "sensors", "buttons", "timers", "thresholds"};
-    for(size_t i=0; i<5; i++){
-        if(!doc.containsKey(fields[i])){
-            debug.printf("JSON config misses key %s!", fields[i].c_str());
-            server.send(503, "text/plain", "invalid JSON data");
-            return;
-        }
-    }
-
-    
-    if(!doc.containsKey("network") || !doc.containsKey("sensors") || !doc.containsKey("sensors"))
-
-    // don't overwrite WiFi password if empty
-    // replace empty string with old password
-    if(doc["wlan"]["pass"].as<String>().length() == 0){
-        File dataFile = SPIFFS.open("/config.json", "r");
-        DynamicJsonDocument doc_old(1024);
-        DeserializationError error_old = deserializeJson(doc_old, dataFile);
-        if(!error_old){
-            doc["wlan"]["pass"] = doc_old["wlan"]["pass"].as<String>();
-            dataFile.close();
-        }
-    }
-
-    // replace config file
-    File dataFile = SPIFFS.open("/config.json", "w");
-    serializeJson(doc, dataFile);
-    dataFile.close();
-    // send success
-    server.send(200, "text/plain", "ok");
-    Alarm.delay(100);
-    // restart to read clean values
-    ESP.restart();
-
-}
-
-// void handleFileUpload() {
-//     if (server.uri() != "/edit") return;
-//     HTTPUpload &upload = server.upload();
-//     if (upload.status == UPLOAD_FILE_START) {
-//         String filename = upload.filename;
-//         if (!filename.startsWith("/")) filename = "/" + filename;
-//         debug.print("handleFileUpload Name: ");
-//         debug.println(filename);
-//         fsUploadFile = SPIFFS.open(filename, "w");
-//         filename = String();
-//     } else if (upload.status == UPLOAD_FILE_WRITE) {
-//         if (fsUploadFile)
-//             fsUploadFile.write(upload.buf, upload.currentSize);
-//     } else if (upload.status == UPLOAD_FILE_END) {
-//         if (fsUploadFile)
-//             fsUploadFile.close();
-//         debug.print("handleFileUpload Size: ");
-//         debug.println(upload.totalSize);
-//     }
-// }
-
-/**************************************
- * 
- * check basic auth if user and password is set
- * 
- *************************************/
-// bool checkAuth(){
-//     debug.println("Checking basic auth...");
-//     if(basic_auth_user.length() == 0 || basic_auth_user.length() == 0){
-//         debug.println("No user:pass set");
-//         return true;
-//     }
-//     char* user = new char[basic_auth_user.length()];
-//     char* pass = new char[basic_auth_pass.length()];
-//     basic_auth_user.toCharArray(user, basic_auth_user.length());
-//     basic_auth_pass.toCharArray(pass, basic_auth_pass.length());
-//     debug.printf("Checking %s%s\n", user, pass);
-//     bool auth = server.authenticate(user, pass);
-//     delete user;
-//     delete pass;
-//     return auth;
-// }
 
 /**
- * @brief gets called when an Alarm was triggered. Checks all Timers for the right alarm and activates button
+ * @brief gets called when an Alarm was triggered. Checks all Timers for the right alarm and activates actuator
  * 
  */
-void timerCallback() {
+void timerCallback()
+{
     AlarmId id = Alarm.getTriggeredAlarmId();
     debug.printf("Timer callback for Id %d\n", id);
     // find the triggered alarm by ID
-    for (size_t i = 0; i < timers.size(); i++) {
-        Timer* t = timers.get(i);
-        if(t->checkAlarmId(id)){
+    for (size_t i = 0; i < timers.size(); i++)
+    {
+        Timer *t = timers[i];
+        if (t->checkAlarmId(id))
+        {
             return;
         }
     }
@@ -905,8 +846,10 @@ void timerCallback() {
  * @return true time is synced
  * @return false time is not synced
  */
-bool initTimers() {
-    if (timeStatus() != timeStatus_t::timeSet) {
+bool initTimers()
+{
+    if (timeStatus() != timeStatus_t::timeSet)
+    {
         debug.println("Cannot init timers. Time not set");
         return false;
     }
@@ -917,9 +860,11 @@ bool initTimers() {
     ti = *localtime(&t);
     unsigned int time_min = ti.tm_hour * 60 + ti.tm_min;
 
-    for (size_t i = 0; i < timers.size(); i++) {
-        Timer *t = timers.get(i);
-        if(!t->isInitialized()){
+    for (size_t i = 0; i < timers.size(); i++)
+    {
+        Timer *t = timers[i];
+        if (!t->isInitialized())
+        {
             t->init(time_min, timerCallback);
         }
         // debug.printf("Init timer %s on: %02d:%02d, off: %02d:%02d\n",
@@ -945,17 +890,21 @@ bool initTimers() {
  * NTP time sync provider
  *
  *************************************/
-time_t getNtpTime() {
+time_t getNtpTime()
+{
     //configTime(-3600, -3600, "69.10.161.7");
 
     debug.printf("Update time with GMT+%02d and DST: %d\n",
-                 settings_time.gmt_offset_sec/3600, settings_time.dst);
+                 settings_time.gmt_offset_sec / 3600, settings_time.dst);
 
     configTime(0, settings_time.dst ? 3600 : 0, "69.10.161.7");
     struct tm timeinfo;
-    if (!getLocalTime(&timeinfo)) {
+    if (!getLocalTime(&timeinfo))
+    {
         debug.println("Failed to obtain time");
-    } else {
+    }
+    else
+    {
         debug.print("Synced time to: ");
         debug.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
     }
@@ -967,19 +916,25 @@ time_t getNtpTime() {
  * Read new sensor values
  * 
  *************************************/
-void readSensors() {
+void readSensors()
+{
+    setLEDState(LEDState::READ_SENSORS);
     time_t t = now();
     buffer_time.add(t, true);
-    for(size_t i=0; i<sensors.size(); i++){
-        THSensor *s = sensors.get(i);
-        if(s->isEnabled()){
-            sensors.get(i)->updateTH();
+    for (size_t i = 0; i < sensors.size(); i++)
+    {
+        THSensor *s = sensors[i];
+        if (s->isEnabled())
+        {
+            sensors[i]->updateTH();
         }
     }
+    setLEDState(LEDState::NONE);
 
     // check for thresholds and activate buttons
-    for(size_t i=0; i<thresholds.size(); i++){
-        Threshold *t = thresholds.get(i);
+    for (size_t i = 0; i < thresholds.size(); i++)
+    {
+        Threshold *t = thresholds[i];
         t->checkThreshold();
     }
 }
@@ -989,7 +944,7 @@ void readSensors() {
 //  * Start rain / whatever for a given duration
 //  *
 //  *************************************/
-// void startThresholdAction(Threshold *t, Button *b) {
+// void startThresholdAction(Threshold *t, Actuator *b) {
 //     debug.printf("Activate threshold %s for %.2f seconds...\n", t->name.c_str(), t->duration);
 //     digitalWrite(b->pin, t->inverted ? LOW : HIGH);
 //     Alarm.delay(t->duration*1000);
@@ -1005,33 +960,81 @@ void readSensors() {
 //     // }
 // }
 
-// void stopThresholdAction(Threshold *t, Button *b) {
+// void stopThresholdAction(Threshold *t, Actuator *b) {
 //     debug.printf("Deactivate threshold %s after %.2f seconds...\n", t->name.c_str(), t->duration);
 //     digitalWrite(b->pin, t->inverted ? HIGH : LOW);
 //     t->last_activated = millis();
 // }
 
-
-THSensor* getSensor(String name){
+THSensor *getSensor(String name)
+{
     // get Sensor by name
-    for(size_t i=0; i<sensors.size(); i++){
-        if(sensors.get(i)->getName() == name){
-            return sensors.get(i);
+    for (size_t i = 0; i < sensors.size(); i++)
+    {
+        if (sensors[i]->getName() == name)
+        {
+            return sensors[i];
         }
     }
     debug.printf("Cannot find sensor with name %s\n", name.c_str());
     return nullptr;
 }
 
-Button* getButton(String name){
-    // get button by name
-    for(size_t i=0; i<buttons.size(); i++){
-        if(buttons.get(i)->name == name){
-            return buttons.get(i);
+Actuator *getActuator(String name)
+{
+    // get actuator by name
+    for (const auto &a : actuators)
+    {
+        if (a->getName() == name)
+        {
+            return a;
         }
     }
-    debug.printf("Cannot find button with name %s\n", name.c_str());
+    debug.printf("Cannot find actuator with name %s\n", name.c_str());
     return nullptr;
+}
+
+void setLEDState(LEDState state)
+{
+    statusLEDState = state;
+    updateLEDState();
+}
+
+void updateLEDState()
+{
+    debug.printf("Set LED state %d\n", statusLEDState);
+    RgbColor color;
+    switch (statusLEDState)
+    {
+    case LEDState::NONE:
+        color = RgbColor(0, 0, 0);
+        break;
+    case LEDState::ERROR:
+        color = RgbColor(255, 0, 0);
+        break;
+    case LEDState::WIFI_STATE_AP:
+        color = RgbColor(255, 255, 0);
+        break;
+    case LEDState::WIFI_STATE_CONNECTING:
+        color = RgbColor(0, 255, 255);
+        break;
+    case LEDState::WIFI_STATE_CONNECTED:
+        color = RgbColor(0, 255, 0);
+        break;
+    case LEDState::WIFI_STATE_DISCONNECTED:
+        color = RgbColor(255, 0, 0);
+        break;
+    case LEDState::OTA_ACTIVE:
+        color = RgbColor(0, 0, 255);
+        break;
+    default:
+        break;
+    }
+
+    statusLED.SetPixelColor(0, color.Dim(30));
+
+    statusLED.Show();
+    debug.printf("LED brightness: %d\n", statusLED.GetPixelColor(0).CalculateBrightness());
 }
 
 /**************************************
@@ -1039,7 +1042,8 @@ Button* getButton(String name){
  * Create mock values for chart test
  *
  *************************************/
-void randomValues(size_t count) {
+void randomValues(size_t count)
+{
     // time_t t;
     // float temp;
     // float humid;
@@ -1060,4 +1064,3 @@ void randomValues(size_t count) {
     //     buffer_humid.add(humid);
     // }
 }
-

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <title>TerraESP</title>
+
+    <link rel="stylesheet" href="/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/css/select.min.css">
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/js/jquery.min.js"></script>
+    <script src="/js/moment.min.js"></script>
+    <script src="/js/chart.js"></script>
+    <script src="/js/knockout.js"></script>
+    <script src="/js/knockout.chart.js"></script>
+    <script src="/js/bootstrap.min.js"></script>
+    <script src="/js/select.min.js"></script>
+</head>
+
+<body>
+    <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
+        <a class="navbar-brand" href="#">TerraESP</a>
+
+        <ul class="navbar-nav mr-auto">
+            <li class="nav-item">
+                <a class="nav-link" data-toggle="collapse" href="#controls" role="button" aria-expanded="true"
+                    aria-controls="controls">Control</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" data-toggle="collapse" href="#settings" role="button" aria-expanded="false"
+                    aria-controls="settings">Settings</a>
+            </li>
+        </ul>
+
+        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsExampleDefault"
+            aria-controls="navbarsExampleDefault" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+    </nav>
+
+    <main role="main" class="container">
+        <div class="accordion" id="accordionExample">
+            <div class="card">
+                <div id="controls" class="collapse show" aria-labelledby="controls" data-parent="#accordionExample">
+                    <div class="card-body">
+                        <!-- control -->
+                        <div class="row">
+
+                            <div class="col-md-12">
+                                <h3>Control</h3>
+                            </div>
+                            <div class="col-md-12" data-bind="foreach: actuators">
+                                <div class="col-md-3" data-bind="if: isButton()">
+                                    <button type="button"
+                                        data-bind="value: value, text: name, class: enabled(), click: toggle"></button>
+                                </div>
+                                <div class="col-md-3" data-bind="if: !isButton()">
+                                    <label><span data-bind="text: name"></span>: <span
+                                            data-bind="text: value"></span></label>
+                                    <input type="range" class="custom-range nav-item"
+                                        data-bind="text: name, attr: {min: min, max: max}, value: value"></input>
+                                </div>
+                            </div>
+
+                            <!-- chart -->
+                            <div class="col-md-12">
+                                <h3>Chart</h3>
+                            </div>
+                            <div class="col-md-12">
+                                <canvas id="chart"
+                                    data-bind="chart: { type: 'line', data: chartData, options: chartOptions }"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <div id="settings" class="collapse" aria-labelledby="settings" data-parent="#accordionExample">
+                    <div class="card-body">
+                        <div class="row">
+                            <!-- settings -->
+                            <div class="col-md-12">
+                                <div class="row">
+                                    <h4 class="mb-3">Settings</h4>
+                                </div>
+                                <form class="needs-validation" novalidate>
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <label for="time_offset">DST</label>
+                                            <input type="checkbox" class="form-control" id="settings_general_dst" placeholder="" data-bind="checked: settings().general.dst">
+                                            <div class="invalid-feedback">
+                                                Valid first name is required.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main><!-- /.container -->
+
+    <script src="/js/script.js"></script>
+</body>
+
+</html>
