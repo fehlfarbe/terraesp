@@ -29,7 +29,8 @@
 #define MAX_ELEMENTS 30
 
 // Buffer size for 24h / 5 minutes
-#define SENSORS_BUFSIZE 288
+// #define SENSORS_BUFSIZE 288
+// #define SENSORS_BUFSIZE 100
 #include "sensors/sensors.h"
 #include "sensors/analog_sensor.h"
 #include "sensors/dht_sensor.h"
@@ -77,6 +78,9 @@ RingBufCPP<Event, 100> events;
 Array<THSensor *, MAX_ELEMENTS> sensors;
 RingBufCPP<time_t, SENSORS_BUFSIZE> buffer_time;
 
+// parallel task
+TaskHandle_t pTask;
+
 // Telnet
 Debug debug;
 WiFiServer telnetServer(23);
@@ -85,6 +89,7 @@ WiFiClient telnetClient;
 /**************************
  * DECLARATIONS
  *************************/
+void parallelTask(void * parameter);
 THSensor *getSensor(String name);
 Actuator *getActuator(String name);
 void randomValues(size_t count);
@@ -181,7 +186,7 @@ void setup()
     server.on("/api/actuators", HTTP_GET, handleActurators);
     server.on("/api/actuator/change", HTTP_POST, handleActuratorChange);
     server.on("/api/sensors/all", HTTP_GET, handleSensordata);
-    server.on("/api/config", HTTP_GET, handleConfig);
+    server.on("/api/config", handleConfig);
     // server.serveStatic("/api/config", LITTLEFS, "/www/config.json");
 
     // ToDo: new async server
@@ -226,10 +231,21 @@ void setup()
     // @todo: activate only if jumper is set
     initOTA();
 
+
+    // setup parallel task
+    // xTaskCreatePinnedToCore(
+    //   parallelTask, /* Function to implement the task */
+    //   "task2", /* Name of the task */
+    //   10000,  /* Stack size in words */
+    //   NULL,  /* Task input parameter */
+    //   1,  /* Priority of the task */
+    //   &pTask,  /* Task handle. */
+    //   0); /* Core where the task should run */
+
     // init telnetServer
-    debug.setTelnet(&telnetServer, &telnetClient);
-    telnetServer.begin();
-    telnetServer.setNoDelay(true);
+    // debug.setTelnet(&telnetServer, &telnetClient);
+    // telnetServer.begin();
+    // telnetServer.setNoDelay(true);
 
     setLEDState(LEDState::NONE);
 
@@ -256,14 +272,10 @@ void setup()
 void loop()
 {
     // check WiFi an reconnect if necessary
-    if (WiFi.status() == WL_CONNECTED)
-    {
-        digitalWrite(LED_BUILTIN, HIGH);
-    }
-    else
+    if (WiFi.status() != WL_CONNECTED)
     {
         debug.println(WiFi.status());
-        digitalWrite(LED_BUILTIN, LOW);
+        setLEDState(LEDState::WIFI_STATE_DISCONNECTED);
         wifiManager.autoConnect();
     }
 
@@ -279,21 +291,21 @@ void loop()
     }
 
     // add new telnet Clients
-    if (telnetServer.hasClient())
-    {
-        if (!telnetClient || !telnetClient.connected())
-        {
-            if (telnetClient)
-            {
-                telnetClient.stop();
-                debug.println("Telnet Client Stop");
-            }
-            telnetClient = telnetServer.available();
-            debug.println("New Telnet client");
-            telnetClient.flush();
-            telnetClient.println("Welcome to TerraESP");
-        }
-    }
+    // if (telnetServer.hasClient())
+    // {
+    //     if (!telnetClient || !telnetClient.connected())
+    //     {
+    //         if (telnetClient)
+    //         {
+    //             telnetClient.stop();
+    //             debug.println("Telnet Client Stop");
+    //         }
+    //         telnetClient = telnetServer.available();
+    //         debug.println("New Telnet client");
+    //         telnetClient.flush();
+    //         telnetClient.println("Welcome to TerraESP");
+    //     }
+    // }
 
     // update thresholds -> deactivates thresholds after duration
     for (size_t i = 0; i < thresholds.size(); i++)
@@ -304,6 +316,13 @@ void loop()
 
     // delay, handle alarms/sensors and so on
     Alarm.delay(10);
+}
+
+void parallelTask(void * parameter){
+    while(true){
+        // Serial.println(ESP.getFreeHeap());
+        delay(100);
+    }
 }
 
 /**
@@ -334,9 +353,8 @@ void loadSettings(fs::FS &fs)
             debug.print("Got new sensor ");
             debug.print(s["type"].as<String>());
             debug.print(" on pin/address ");
-            debug.print(s["pin"].as<String>());
-            debug.print(" ");
-            debug.println(s["address"].as<String>());
+            debug.print(s["gpio"].as<String>());
+            debug.println();
             String type((const char *)s["type"]);
             type.toLowerCase();
             THSensor *thsensor = nullptr;
@@ -370,7 +388,7 @@ void loadSettings(fs::FS &fs)
             }
             else if (type == "sht31")
             {
-                thsensor = new SHT31Sensor(s["name"], s["address"]);
+                thsensor = new SHT31Sensor(s["name"], s["gpio"]);
             }
             else if (type == "ds18b20")
             {
@@ -534,7 +552,7 @@ void initOTA()
     });
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
         // setLEDState(LEDState::OTA_ACTIVE);
-        RgbColor updatedColor = RgbColor::LinearBlend(RgbColor(50, 0, 0), RgbColor(0, 100, 0), (progress / (float)total));
+        RgbColor updatedColor = RgbColor::LinearBlend(RgbColor(50, 0, 0), RgbColor(0, 50, 0), (progress / (float)total));
         statusLED.SetPixelColor(0, updatedColor);
         statusLED.Show();
         debug.printf("Progress: %u%%\r", (progress / (total / 100)));
@@ -749,7 +767,7 @@ void handleActuratorChange(AsyncWebServerRequest *request)
 {
     if (request->method() == HTTP_POST)
     {
-        debug.printf("Change actuator %s to %d\n", request->arg("name").c_str(), request->arg("value").toInt());
+        debug.printf("Change actuator %s to %ld\n", request->arg("name").c_str(), request->arg("value").toInt());
         Actuator *actuator = getActuator(request->arg("name"));
         if (actuator)
         {
@@ -765,60 +783,68 @@ void handleActuratorChange(AsyncWebServerRequest *request)
 
 void handleConfig(AsyncWebServerRequest *request)
 {
+// if method is POST and param exists
+    if (request->method() == HTTP_POST && request->params())
+    {
+
+        // ToDo
+        debug.println("Config Update");
+        debug.println(request->args());
+        for(size_t i=0; i<request->args(); i++){
+            debug.printf("Arg %s: %s\n", request->argName(i), request->arg(request->argName(i)).c_str());
+        }
+        DynamicJsonDocument doc(4096);
+        //JsonObject &rootNew = jsonBufferNew.parseObject(server.arg("data"));
+        DeserializationError error = deserializeJson(doc, request->arg(request->argName(0)));
+
+        if(error){
+            debug.println("JSON config not valid");
+            debug.println(error.c_str());
+            request->send(500, "text/html", error.c_str());
+            return;
+        }
+
+        // check for fields
+        String fields[] = {"sensors", "actuators", "timers", "thresholds", "general", "network"};
+        for(size_t i=0; i<5; i++){
+            if(!doc.containsKey(fields[i])){
+                debug.printf("JSON config misses key %s!", fields[i].c_str());
+                request->send(500, "text/html", "Invalid JSON data! Key " + fields[i] + " missing.");
+                return;
+            }
+        }
+
+        // if(!doc.containsKey("network") || !doc.containsKey("sensors") || !doc.containsKey("sensors"))
+
+        // don't overwrite WiFi password if empty
+        // replace empty string with old password
+        // if(doc["wlan"]["pass"].as<String>().length() == 0){
+        //     File dataFile = LITTLEFS.open("/config.json", "r");
+        //     DynamicJsonDocument doc_old(1024);
+        //     DeserializationError error_old = deserializeJson(doc_old, dataFile);
+        //     if(!error_old){
+        //         doc["wlan"]["pass"] = doc_old["wlan"]["pass"].as<String>();
+        //         dataFile.close();
+        //     }
+        // }
+
+        // replace config file
+        File dataFile = LITTLEFS.open("/config.json", "w");
+        serializeJson(doc, dataFile);
+        dataFile.close();
+        // send success
+        // server.send(200, "text/plain", "ok");
+        request->send(200, "text/plain", "ok, will reboot now");
+        // Alarm.delay(100);
+        // restart to read clean values
+        ESP.restart();
+    }
+
+    // load config
     File config = LITTLEFS.open("/config.json", FILE_READ);
     AsyncWebServerResponse *response = request->beginResponse(200, "application/json", config.readString());
     request->send(response);
     config.close();
-
-    // ToDo
-    // debug.println("Config Update");
-    // debug.println(server.args());
-    // debug.println(server.argName(0));
-    // debug.println(server.arg(server.argName(0)));
-    // DynamicJsonDocument doc(4096);
-    // //JsonObject &rootNew = jsonBufferNew.parseObject(server.arg("data"));
-    // DeserializationError error = deserializeJson(doc, server.arg(server.argName(0)));
-
-    // if(error){
-    //     debug.println("JSON config not valid");
-    //     debug.println(error.c_str());
-    //     server.send(503, "text/plain", "invalid JSON data");
-    //     return;
-    // }
-
-    // // check for fields
-    // String fields[] = {"network", "sensors", "buttons", "timers", "thresholds"};
-    // for(size_t i=0; i<5; i++){
-    //     if(!doc.containsKey(fields[i])){
-    //         debug.printf("JSON config misses key %s!", fields[i].c_str());
-    //         server.send(503, "text/plain", "invalid JSON data");
-    //         return;
-    //     }
-    // }
-
-    // if(!doc.containsKey("network") || !doc.containsKey("sensors") || !doc.containsKey("sensors"))
-
-    // // don't overwrite WiFi password if empty
-    // // replace empty string with old password
-    // if(doc["wlan"]["pass"].as<String>().length() == 0){
-    //     File dataFile = LITTLEFS.open("/config.json", "r");
-    //     DynamicJsonDocument doc_old(1024);
-    //     DeserializationError error_old = deserializeJson(doc_old, dataFile);
-    //     if(!error_old){
-    //         doc["wlan"]["pass"] = doc_old["wlan"]["pass"].as<String>();
-    //         dataFile.close();
-    //     }
-    // }
-
-    // // replace config file
-    // File dataFile = LITTLEFS.open("/config.json", "w");
-    // serializeJson(doc, dataFile);
-    // dataFile.close();
-    // // send success
-    // server.send(200, "text/plain", "ok");
-    // Alarm.delay(100);
-    // // restart to read clean values
-    // ESP.restart();
 }
 
 /**
@@ -926,7 +952,8 @@ void readSensors()
         THSensor *s = sensors[i];
         if (s->isEnabled())
         {
-            sensors[i]->updateTH();
+            s->updateTH();
+            debug.printf("Sensor %s t=%.2fC h=%.2f%%\n", s->getName().c_str(), s->readLastTemperature(), s->readLastHumidity());
         }
     }
     setLEDState(LEDState::NONE);
@@ -1026,6 +1053,9 @@ void updateLEDState()
         break;
     case LEDState::OTA_ACTIVE:
         color = RgbColor(0, 0, 255);
+        break;
+    case LEDState::READ_SENSORS:
+        color = RgbColor(0, 255, 255);
         break;
     default:
         break;

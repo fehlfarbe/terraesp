@@ -14,7 +14,7 @@ Actuator::Actuator(String name, uint8_t gpio, ActuatorType type, bool inverted, 
         // channels 0-15, resolution 1-16 bits, freq limits depend on resolution
         // ledcSetup(uint8_t channel, uint32_t freq, uint8_t resolution_bits);
         ledcAttachPin(gpio, channel); // assign RGB led pins to channels
-        ledcSetup(channel, 12000, 8);     // 12 kHz PWM, 8-bit resolution
+        ledcSetup(channel, 12000, 10);     // 12 kHz PWM, 8-bit resolution
         break;
     default:
         break;

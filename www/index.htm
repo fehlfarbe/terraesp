@@ -7,16 +7,8 @@
 
     <title>TerraESP</title>
 
-    <link rel="stylesheet" href="/css/bootstrap.min.css">
-    <link rel="stylesheet" href="/css/select.min.css">
-    <link rel="stylesheet" href="/css/style.css">
-    <script src="/js/jquery.min.js"></script>
-    <script src="/js/moment.min.js"></script>
-    <script src="/js/chart.js"></script>
-    <script src="/js/knockout.js"></script>
-    <script src="/js/knockout.chart.js"></script>
-    <script src="/js/bootstrap.min.js"></script>
-    <script src="/js/select.min.js"></script>
+    <link rel="stylesheet" href="/css/layout.css">
+    <script src="/js/lib.min.js"></script>
 </head>
 
 <body>
@@ -47,20 +39,24 @@
                     <div class="card-body">
                         <!-- control -->
                         <div class="row">
-
                             <div class="col-md-12">
                                 <h3>Control</h3>
                             </div>
-                            <div class="col-md-12" data-bind="foreach: actuators">
-                                <div class="col-md-3" data-bind="if: isButton()">
-                                    <button type="button"
-                                        data-bind="value: value, text: name, class: enabled(), click: toggle"></button>
-                                </div>
-                                <div class="col-md-3" data-bind="if: !isButton()">
-                                    <label><span data-bind="text: name"></span>: <span
-                                            data-bind="text: value"></span></label>
-                                    <input type="range" class="custom-range nav-item"
-                                        data-bind="text: name, attr: {min: min, max: max}, value: value"></input>
+                            <div class="col-md-12">
+                                <div class="row" data-bind="foreach: actuators">
+
+                                    <div class="col-md-2">
+                                        <div data-bind="if: isButton()">
+                                            <button type="button"
+                                                data-bind="value: value, text: name, class: enabled(), click: toggle"></button>
+                                        </div>
+                                        <div data-bind="if: !isButton()">
+                                            <label><span data-bind="text: name"></span>: <span
+                                                    data-bind="text: value"></span></label>
+                                            <input type="range" class="custom-range nav-item"
+                                                data-bind="text: name, attr: {min: min, max: max}, value: value"></input>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -77,7 +73,7 @@
                 </div>
             </div>
             <div class="card">
-                <div id="settings" class="collapse" aria-labelledby="settings" data-parent="#accordionExample">
+                <div id="settings" class="collapse show" aria-labelledby="settings" data-parent="#accordionExample">
                     <div class="card-body">
                         <div class="row">
                             <!-- settings -->
@@ -88,11 +84,278 @@
                                 <form class="needs-validation" novalidate>
                                     <div class="row">
                                         <div class="col-md-6">
-                                            <label for="time_offset">DST</label>
-                                            <input type="checkbox" class="form-control" id="settings_general_dst" placeholder="" data-bind="checked: settings().general.dst">
-                                            <div class="invalid-feedback">
-                                                Valid first name is required.
+                                            <label for="time_offset">Daylight Saving Time (DST)</label>
+                                            <input type="checkbox" class="form-control" id="settings_general_dst"
+                                                placeholder="" data-bind="checked: settings().general.dst">
+                                        </div>
+                                    </div>
+                                    <!-- sensors -->
+                                    <div class="row">
+                                        <h5>Sensors</h5>
+                                    </div>
+                                    <div data-bind="foreach: settings().sensors">
+                                        <div class="row">
+                                            <div class="col-md-5">
+                                                <label for="settings_sensor_name">Name</label>
+                                                <input type="text" class="form-control" id="settings_sensor_name"
+                                                    placeholder="" data-bind="value: name">
+                                                <div class="invalid-feedback">
+                                                    Valid sensor name is required.
+                                                </div>
                                             </div>
+                                            <div class="col-md-3">
+                                                <label for="settings_sensor_type">Type</label>
+                                                <select class="form-control"
+                                                    data-bind="options: $root.sensor_types, value: type" placeholder="">
+                                                </select>
+                                            </div>
+                                            <div class="col-md-2">
+                                                <label for="settings_sensor_gpio">GPIO/Address</label>
+                                                <input type="text" class="form-control" id="settings_sensor_gpio"
+                                                    placeholder="" data-bind="value: gpio">
+                                                <div class="invalid-feedback">
+                                                    Valid GPIO is required.
+                                                </div>
+                                            </div>
+                                            <div class="col-md-1">
+                                                <label for="settings_sensor_enabled">Enabled</label>
+                                                <input type="checkbox" class="form-control" id="settings_sensor_enabled"
+                                                    placeholder="" data-bind="checked: enabled">
+                                            </div>
+                                            <div class="col-md-1">
+                                                <label for="settings_sensor_delete">Delete</label>
+                                                <button class="btn btn-danger" type="button"
+                                                    data-bind="click: $root.removeSensor"><svg width="1em" height="1em"
+                                                        viewBox="0 0 16 16" class="bi bi-trash-fill" fill="currentColor"
+                                                        xmlns="http://www.w3.org/2000/svg">
+                                                        <path fill-rule="evenodd"
+                                                            d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1H2.5zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zM8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7A.5.5 0 0 1 8 5zm3 .5a.5.5 0 0 0-1 0v7a.5.5 0 0 0 1 0v-7z" />
+                                                    </svg></button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-2">
+                                            <button class="btn btn-primary" type="button"
+                                                data-bind="click: addSensor">+</button>
+                                        </div>
+                                    </div>
+                                    <hr>
+                                    <!-- actuators -->
+                                    <div class="row">
+                                        <h5>Actuators</h5>
+                                    </div>
+                                    <div data-bind="foreach: settings().actuators">
+                                        <div class="row">
+                                            <div class="col-md-5">
+                                                <label for="settings_actuators_name">Name</label>
+                                                <input type="text" class="form-control" id="settings_actuators_name"
+                                                    placeholder="" data-bind="value: name">
+                                                <div class="invalid-feedback">
+                                                    Valid actuator name is required.
+                                                </div>
+                                            </div>
+                                            <div class="col-md-2">
+                                                <label for="settings_actuators_gpio">GPIO</label>
+                                                <input type="text" class="form-control" id="settings_actuators_gpio"
+                                                    placeholder="" data-bind="value: gpio">
+                                            </div>
+                                            <div class="col-md-2">
+                                                <label for="settings_actuators_type">Type</label>
+                                                <select class="form-control"
+                                                    data-bind="options: $root.actuator_types, value: type"
+                                                    placeholder="">
+                                                </select>
+                                            </div>
+                                            <div class="col-md-1" data-bind="if: type() == 'range'">
+                                                <label for="settings_actuators_min">Min</label>
+                                                <input type="text" class="form-control" id="settings_actuators_min"
+                                                    placeholder="" data-bind="value: min">
+                                            </div>
+                                            <div class="col-md-1" data-bind="if: type() == 'range'">
+                                                <label for="settings_actuators_max">Min</label>
+                                                <input type="text" class="form-control" id="settings_actuators_max"
+                                                    placeholder="" data-bind="value: max">
+                                            </div>
+                                            <div class="col-md-1">
+                                                <label for="settings_actuators_delete">Delete</label>
+                                                <button class="btn btn-danger" type="button"
+                                                    data-bind="click: $root.removeActuator"><svg width="1em"
+                                                        height="1em" viewBox="0 0 16 16" class="bi bi-trash-fill"
+                                                        fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                                        <path fill-rule="evenodd"
+                                                            d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1H2.5zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zM8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7A.5.5 0 0 1 8 5zm3 .5a.5.5 0 0 0-1 0v7a.5.5 0 0 0 1 0v-7z" />
+                                                    </svg></button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-2">
+                                            <button class="btn btn-primary" type="button"
+                                                data-bind="click: addActuator">+</button>
+                                        </div>
+                                    </div>
+                                    <hr>
+                                    <!-- timers -->
+                                    <div class="row">
+                                        <h5>Timers</h5>
+                                    </div>
+                                    <div data-bind="foreach: settings().timers">
+                                        <div class="row">
+                                            <div class="col-md-4">
+                                                <label for="settings_timers_name">Name</label>
+                                                <input type="text" class="form-control" id="settings_timers_name"
+                                                    placeholder="" data-bind="value: name">
+                                                <div class="invalid-feedback">
+                                                    Valid timer name is required.
+                                                </div>
+                                            </div>
+                                            <div class="col-md-2">
+                                                <label for="settings_actuators_gpio">Actuator</label>
+                                                <select class="form-control"
+                                                    data-bind="options: $root.settings().actuators(), value: $data.actuator, optionsText: 'name'"
+                                                    placeholder="">
+                                                </select>
+                                            </div>
+                                            <div class="col-md-2">
+                                                <label for="settings_actuators_on">On</label>
+                                                <input type="time" class="form-control" id="settings_actuators_on"
+                                                    data-bind="value: on" placeholder="" required>
+                                                <div class="invalid-feedback">
+                                                    Valid time is required.
+                                                </div>
+                                            </div>
+                                            <div class="col-md-2">
+                                                <label for="settings_actuators_off">Off</label>
+                                                <input type="time" class="form-control" id="settings_actuators_off"
+                                                    data-bind="value: off" placeholder="" required>
+                                                <div class="invalid-feedback">
+                                                    Valid time is required.
+                                                </div>
+                                            </div>
+                                            <div class="col-md-1">
+                                                <label for="settings_actuators_inverted">Inverted</label>
+                                                <input type="checkbox" class="form-control"
+                                                    id="settings_actuators_inverted" placeholder=""
+                                                    data-bind="checked: inverted">
+                                            </div>
+                                            <div class="col-md-1">
+                                                <label for="settings_actuators_delete">Delete</label>
+                                                <button class="btn btn-danger" type="button"
+                                                    data-bind="click: $root.removeTimer"><svg width="1em" height="1em"
+                                                        viewBox="0 0 16 16" class="bi bi-trash-fill" fill="currentColor"
+                                                        xmlns="http://www.w3.org/2000/svg">
+                                                        <path fill-rule="evenodd"
+                                                            d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1H2.5zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zM8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7A.5.5 0 0 1 8 5zm3 .5a.5.5 0 0 0-1 0v7a.5.5 0 0 0 1 0v-7z" />
+                                                    </svg></button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-2">
+                                            <button class="btn btn-primary" type="button"
+                                                data-bind="click: addTimer">+</button>
+                                        </div>
+                                    </div>
+                                    <hr>
+                                    <!-- thresholds -->
+                                    <div class="row">
+                                        <h5>Thresholds</h5>
+                                    </div>
+                                    <div data-bind="foreach: settings().thresholds">
+                                        <div class="row">
+                                            <div class="col-md-4">
+                                                <label for="settings_threshold_name">Name</label>
+                                                <input type="text" class="form-control" id="settings_threshold_name"
+                                                    placeholder="" data-bind="value: name">
+                                                <div class="invalid-feedback">
+                                                    Valid timer name is required.
+                                                </div>
+                                            </div>
+                                            <div class="col-md-1">
+                                                <label for="settings_threshold_duration">Duration (s)</label>
+                                                <input type="text" class="form-control" id="settings_threshold_duration"
+                                                    data-bind="value: duration" placeholder="" required>
+                                                <div class="invalid-feedback">
+                                                    Valid duration is required.
+                                                </div>
+                                            </div>
+                                            <div class="col-md-1">
+                                                <label for="settings_threshold_threshold">Threshold</label>
+                                                <input type="text" class="form-control"
+                                                    id="settings_threshold_threshold" data-bind="value: threshold"
+                                                    placeholder="" required>
+                                                <div class="invalid-feedback">
+                                                    Valid threshold is required.
+                                                </div>
+                                            </div>
+                                            <div class="col-md-1">
+                                                <label for="settings_threshold_comparator">&gt;&lt;</label>
+                                                <select class="form-control" id="settings_threshold_comparator"
+                                                    data-bind="options: $root.comparator_types, value: comparator"
+                                                    placeholder="">
+                                                </select>
+                                            </div>
+                                            <div class="col-md-2">
+                                                <label for="settings_threshold_actuator">Actuator</label>
+                                                <select class="form-control"
+                                                    data-bind="options: $root.settings().actuators(), value: $data.actuator, optionsText: 'name'"
+                                                    placeholder="">
+                                                </select>
+                                            </div>
+                                            <div class="col-md-1">
+                                                <label for="settings_threshold_inverted">Inverted</label>
+                                                <input type="checkbox" class="form-control"
+                                                    id="settings_threshold_inverted" placeholder=""
+                                                    data-bind="checked: inverted">
+                                            </div>
+                                            <div class="col-md-1">
+                                                <label for="settings_threshold_gap">Gap (s)</label>
+                                                <input type="text" class="form-control" id="settings_threshold_gap"
+                                                    data-bind="value: gap" placeholder="" required>
+                                                <div class="invalid-feedback">
+                                                    Valid gap is required.
+                                                </div>
+                                            </div>
+                                            <div class="col-md-2">
+                                                <label for="settings_threshold_sensor">Sensor</label>
+                                                <select class="form-control"
+                                                    data-bind="options: $root.settings().sensors(), value: $data.sensor, optionsText: 'name'"
+                                                    placeholder="">
+                                                </select>
+                                            </div>
+                                            <div class="col-md-2">
+                                                <label for="settings_threshold_sensor_type">Type</label>
+                                                <select class="form-control" id="settings_threshold_comparator"
+                                                    data-bind="options: $root.sensor_types_th, value: sensor_type"
+                                                    placeholder="">
+                                                </select>
+                                            </div>
+                                            <div class="col-md-1">
+                                                <label for="settings_threshold_delete">Delete</label>
+                                                <button class="btn btn-danger" type="button"
+                                                    data-bind="click: $root.removeThreshold"><svg width="1em"
+                                                        height="1em" viewBox="0 0 16 16" class="bi bi-trash-fill"
+                                                        fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                                        <path fill-rule="evenodd"
+                                                            d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1H2.5zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zM8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7A.5.5 0 0 1 8 5zm3 .5a.5.5 0 0 0-1 0v7a.5.5 0 0 0 1 0v-7z" />
+                                                    </svg></button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-2">
+                                            <button class="btn btn-primary" type="button"
+                                                data-bind="click: addThreshold">+</button>
+                                        </div>
+                                    </div>
+                                    <hr>
+                                    <!-- save and reboot ESP -->
+                                    <div class="row">
+                                        <div class="col-md-12">
+                                            <button class="btn btn-success col-md-12" type="button"
+                                                data-bind="click: save_settings">Save and
+                                                reboot</button>
                                         </div>
                                     </div>
                                 </form>

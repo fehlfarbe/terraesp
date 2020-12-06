@@ -9,8 +9,8 @@
         ],
     "sensors" : [
         { "name" : "DS18B20 Sensor", "type" : "ds18b20", "gpio" : 15, "enabled" : true},
-        { "name" : "top", "type" : "SHT31", "address" : 68, "enabled" : true},
-        { "name" : "bottom", "type" : "SHT31", "address" : 69, "enabled" : true},
+        { "name" : "top", "type" : "SHT31", "gpio" : 68, "enabled" : true},
+        { "name" : "bottom", "type" : "SHT31", "gpio" : 69, "enabled" : true},
         { "name" : "soil", "type" : "analog_t", "gpio" : 4, "enabled" : false},
         { "name" : "soil", "type" : "analog_h", "gpio" : 15, "enabled" : false}
         ],
@@ -18,11 +18,11 @@
         {"name" : "SSR0", "gpio" : 26, "type" : "toggle"},
         {"name" : "SSR1", "gpio" : 27, "type" : "toggle"},
         {"name" : "SSR2", "gpio" : 14, "type" : "toggle"},
-        {"name" : "PWM1", "gpio" : 12, "type" : "scroll", "min" : 0, "max" : 1023}
+        {"name" : "PWM1", "gpio" : 12, "type" : "range", "min" : 0, "max" : 1023}
     ],
     "thresholds" : [
         {"name": "rain_top", "duration": 10, "threshold": 70, "comparator": "<", "actuator": "SSR0", "inverted": false, "gap": 600, "sensor": "top", "sensor_type": "humidity"},
-        {"name": "rain_bottom", "duration": 10, "threshold": 30, "comparator": "<", "actuator": "SSR0", "inverted": false, "gap": 600, "sensor": "bottom", "sensor_type": "humidity"}
+        {"name": "rain_bottom", "duration": 10, "threshold": 30, "comparator": ">", "actuator": "SSR0", "inverted": false, "gap": 600, "sensor": "bottom", "sensor_type": "humidity"}
     ],
     "general" : {
         "dst" : false
