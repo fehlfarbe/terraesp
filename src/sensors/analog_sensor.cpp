@@ -9,14 +9,14 @@ AnalogSensor::AnalogSensor(String name, uint8_t pin, bool is_temp, bool is_humid
 
 float AnalogSensor::readTemperature(){
     if(hasTemperature()){
-        return analogRead(m_pin);
+        return map(analogRead(m_pin), 0, 4095, 0, 100);
     }
     return 0;
 }
 
 float AnalogSensor::readHumidity(){
     if(hasHumidity()){
-        return analogRead(m_pin);
+        return map(analogRead(m_pin), 0, 4095, 100, 0);
     }
     return 0;
 }

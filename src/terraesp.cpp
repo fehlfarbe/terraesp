@@ -21,7 +21,7 @@
 #include "Debug.h"
 
 // #define MOCKUP_DATA
-#define LED_BUILTIN 2
+// #define LED_BUILTIN 2
 
 // NeoPixel status
 #define LED_STATUS_NEO 13
@@ -923,7 +923,7 @@ time_t getNtpTime()
     debug.printf("Update time with GMT+%02d and DST: %d\n",
                  settings_time.gmt_offset_sec / 3600, settings_time.dst);
 
-    configTime(0, settings_time.dst ? 3600 : 0, "69.10.161.7");
+    configTime(0, settings_time.dst ? 3600 : 0, "0.de.pool.ntp.org", "1.de.pool.ntp.org");
     struct tm timeinfo;
     if (!getLocalTime(&timeinfo))
     {

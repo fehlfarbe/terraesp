@@ -84,6 +84,8 @@ void Actuator::setValue(uint16_t value)
     case ACTUATOR_SLIDER:
         if (value <= max && value >= min)
         {
+            if(value == HIGH)
+                value = max;
             //analogWrite(b.pin, value);
             debug.printf("Change PWM on channel %d to value: %d\n", channel, value);
             ledcWrite(channel, value);
