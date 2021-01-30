@@ -1,0 +1,3 @@
+(sym_lib_table
+  (lib (name terraesp-eagle-import)(type Legacy)(uri ${KIPRJMOD}/terraesp-eagle-import.lib)(options "")(descr ""))
+)

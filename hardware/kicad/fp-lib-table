@@ -1,0 +1,3 @@
+(fp_lib_table
+  (lib (name terraesp)(type KiCad)(uri "$(KIPRJMOD)/terraesp.pretty")(options "")(descr ""))
+)
