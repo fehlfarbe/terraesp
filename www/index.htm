@@ -59,15 +59,18 @@
                                     </div>
                                 </div>
                             </div>
-
+                        </div>
+                        <div class="row">
                             <!-- chart -->
                             <div class="col-md-12">
                                 <h3>Chart</h3>
                             </div>
-                            <div class="col-md-12">
-                                <canvas id="chart"
-                                    data-bind="chart: { type: 'line', data: chartData, options: chartOptions }"></canvas>
+                            <div class="col-md-12" id="chart" style="height: 500px;">
+                                <!-- <canvas id="chart"
+                                    data-bind="chart: { type: 'line', data: chartData, options: chartOptions }"></canvas> -->
                             </div>
+                            <!-- <div class="col-md-12" id="chart-legend" data-bind="html: chart_legend" style="text-align: center;">
+                            </div> -->
                         </div>
                     </div>
                 </div>
@@ -82,11 +85,24 @@
                                     <h4 class="mb-3">Settings</h4>
                                 </div>
                                 <form class="needs-validation" novalidate>
-                                    <div class="row">
+                                    <div class="row" data-bind="if: settings().general">
                                         <div class="col-md-6">
-                                            <label for="time_offset">Daylight Saving Time (DST)</label>
-                                            <input type="checkbox" class="form-control" id="settings_general_dst"
-                                                placeholder="" data-bind="checked: settings().general.dst">
+                                            <label for="settings_general_gmt_offset">Type</label>
+                                            <select class="form-control" id="settings_general_gmt_offset"
+                                                data-bind="options: $root.tz, value: settings().general().gmt_offset, optionsText: 'label', optionsValue: 'value'">
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label for="settings_general_dst">Daylight Saving Time (DST)</label>
+                                            <input type="checkbox" data-toggle="toggle" id="settings_general_dst"
+                                                placeholder="" data-bind="checked: settings().general().dst">
+                                        </div>
+                                    </div>
+                                    <div class="row" data-bind="if: settings().network">
+                                        <div class="col-md-3">
+                                            <label for="settings_network_hostname">Hostname</label>
+                                            <input type="text" class="form-control" id="settings_network_hostname"
+                                                placeholder="" data-bind="value: settings().network().hostname">
                                         </div>
                                     </div>
                                     <!-- sensors -->
@@ -119,8 +135,8 @@
                                             </div>
                                             <div class="col-md-1">
                                                 <label for="settings_sensor_enabled">Enabled</label>
-                                                <input type="checkbox" class="form-control" id="settings_sensor_enabled"
-                                                    placeholder="" data-bind="checked: enabled">
+                                                <input type="checkbox" id="settings_sensor_enabled" placeholder=""
+                                                    data-toggle="toggle" data-bind="checked: enabled">
                                             </div>
                                             <div class="col-md-1">
                                                 <label for="settings_sensor_delete">Delete</label>
@@ -233,12 +249,12 @@
                                                     Valid time is required.
                                                 </div>
                                             </div>
-                                            <div class="col-md-1">
+                                            <!-- <div class="col-md-1">
                                                 <label for="settings_actuators_inverted">Inverted</label>
                                                 <input type="checkbox" class="form-control"
                                                     id="settings_actuators_inverted" placeholder=""
                                                     data-bind="checked: inverted">
-                                            </div>
+                                            </div> -->
                                             <div class="col-md-1">
                                                 <label for="settings_actuators_delete">Delete</label>
                                                 <button class="btn btn-danger" type="button"
@@ -305,9 +321,8 @@
                                             </div>
                                             <div class="col-md-1">
                                                 <label for="settings_threshold_inverted">Inverted</label>
-                                                <input type="checkbox" class="form-control"
-                                                    id="settings_threshold_inverted" placeholder=""
-                                                    data-bind="checked: inverted">
+                                                <input type="checkbox" id="settings_threshold_inverted" placeholder=""
+                                                    data-toggle="toggle" data-bind="checked: inverted">
                                             </div>
                                             <div class="col-md-1">
                                                 <label for="settings_threshold_gap">Gap (s)</label>

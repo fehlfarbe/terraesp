@@ -1,7 +1,7 @@
 {
     "network" :
         {
-            "hostname" : "terraesp"
+            "hostname" : "terraesp-test"
         },
     "timers" : [
         {"name" : "night", "actuator" : "SSR1", "on" : "22:00", "off" : "10:00", "inverted": false},
@@ -25,6 +25,7 @@
         {"name": "rain_bottom", "duration": 10, "threshold": 30, "comparator": ">", "actuator": "SSR0", "inverted": false, "gap": 600, "sensor": "bottom", "sensor_type": "humidity"}
     ],
     "general" : {
-        "dst" : false
+        "dst" : true,
+        "gmt_offset" : 1
     }
 }

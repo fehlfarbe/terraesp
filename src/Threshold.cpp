@@ -30,6 +30,7 @@ Threshold::~Threshold(){
  */
 void Threshold::checkThreshold(){
     if(!sensor){
+        debug.printf("No sensor configured for threshold %s\n", getName().c_str());
         return;
     }
 

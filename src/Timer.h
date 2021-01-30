@@ -9,15 +9,24 @@
 
 class Timer {
     public:
-        Timer(String name, Actuator *a, int onHour, int onMinute, int offHour, int offMinute, bool inverted);
+        Timer(String name, Actuator *a, uint8_t onHour, uint8_t onMinute, uint8_t offHour, uint8_t offMinute);
         ~Timer();
-        bool init(unsigned int time_min, OnTick_t timerCallback);
+        bool init(const struct tm timeinfo);
         bool isInitialized();
-        bool checkAlarmId(AlarmId);
-        void setEventList(RingBufCPP<Event, 100> *events);
+        bool isTurnedOn();
+        // bool checkAlarmId(AlarmId);
+        bool update(const struct tm timeinfo);
+        bool operator >(const Timer &b);
+        bool operator >(const struct tm timeinfo);
+        bool operator <(const struct tm timeinfo);
+        int tmToSec(const struct tm t);
+        int startToSec();
+        int endToSec();
+        
 
-        // AlarmId getAlarmOnId();
-        // AlarmId getAlarmOffId();
+        void setEventList(RingBufCPP<Event, 100> *events);
+        void setDebug(Debug& d);
+        String toString();
 
     private:
         void activate();
@@ -25,16 +34,16 @@ class Timer {
 
         Debug debug;
         String name;
-        AlarmId alarmOnId = -1;
-        AlarmId alarmOffId = -1;
         uint8_t pin;
         Actuator* actuator = nullptr;
-        int alarmOnHour;
-        int alarmOnMinute;
-        int alarmOffHour;
-        int alarmOffMinute;
+        uint8_t alarmOnHour;
+        uint8_t alarmOnMinute;
+        uint8_t alarmOffHour;
+        uint8_t alarmOffMinute;
+        unsigned int alarmOnInSeconds = 0;
+        unsigned int alarmOffInSeconds = 0;
         bool initialized = false;
-        bool inverted = false;
+        bool turned_on = false;
 
         RingBufCPP<Event, 100> *events = nullptr;
 };

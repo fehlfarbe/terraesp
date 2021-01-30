@@ -5,7 +5,7 @@
 
 struct TimeSettings {
     bool dst = false;
-    int gmt_offset_sec = 0;
+    int gmt_offset = 0;
 };
 
 

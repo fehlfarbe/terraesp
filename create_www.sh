@@ -36,19 +36,20 @@ mkdir -p $PROJECT_DIR/data/www/css
 
 # create js/css for depenencies
 cd $PROJECT_DIR/www/js
-rm lib.js
-for f in jquery.min.js moment.min.js chart.js bootstrap.min.js knockout.js knockout.chart.js select.min.js
+rm lib.js 2> /dev/null
+for f in jquery.min.js moment.min.js jquery.mousewheel.js jquery.flot.js bootstrap.min.js knockout.js select.min.js bootstrap4-toggle.min.js
 do
     cat ${f} >> lib.js
     echo "" >> lib.js
 done
 
 uglifyjs lib.js > lib.min.js
+# cp lib.js lib.min.js
 rm lib.js
 
 # cat jquery.min.js chart.js bootstrap.min.js knockout.js knockout.chart.js moment.min.js select.min.js > deps.min.js
 cd $PROJECT_DIR/www/css
-cat bootstrap.min.css select.min.css style.css > layout.css
+cat bootstrap.min.css select.min.css style.css bootstrap4-toggle.min.css > layout.css
 
 # zip webinterface stuff to data/www
 cd $PROJECT_DIR

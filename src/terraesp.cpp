@@ -7,7 +7,7 @@
 #include <ESPAsyncWiFiManager.h>
 #include <time.h>
 #include <Time.h>
-#include <TimeAlarms.h>
+// #include <TimeAlarms.h>
 #include <FS.h>
 #include <LITTLEFS.h>
 #include <ArduinoJson.h>
@@ -26,7 +26,8 @@
 // NeoPixel status
 #define LED_STATUS_NEO 13
 
-#define MAX_ELEMENTS 30
+#define MAX_ELEMENTS 50
+#define SENSORS_PAUSE_S 120
 
 // Buffer size for 24h / 5 minutes
 // #define SENSORS_BUFSIZE 288
@@ -64,11 +65,9 @@ AsyncWiFiManager wifiManager(&server, &dns);
 // String password = "";
 String host = "terraesp";
 // String ap_ssid = "terraesp";
-bool ap_mode = false;
+// bool ap_mode = false;
 TimeSettings settings_time;
-// LinkedList<Threshold*> thresholds;
-// LinkedList<Actuator*> buttons;
-// LinkedList<Timer*> timers;
+unsigned long last_sensors = 0;
 Array<Threshold *, MAX_ELEMENTS> thresholds;
 Array<Actuator *, MAX_ELEMENTS> actuators;
 Array<Timer *, MAX_ELEMENTS> timers;
@@ -89,14 +88,11 @@ WiFiClient telnetClient;
 /**************************
  * DECLARATIONS
  *************************/
-void parallelTask(void * parameter);
 THSensor *getSensor(String name);
 Actuator *getActuator(String name);
-void randomValues(size_t count);
 void readSensors();
 time_t getNtpTime();
 bool initTimers();
-void timerCallback();
 
 // www
 void handleActuratorChange(AsyncWebServerRequest *request);
@@ -175,7 +171,7 @@ void setup()
     }
 
     // timer for sensors, read new sensor values every 120s
-    Alarm.timerRepeat(120, readSensors);
+    // Alarm.timerRepeat(120, readSensors);
     readSensors();
 
     // HTTP handles
@@ -187,50 +183,29 @@ void setup()
     server.on("/api/actuator/change", HTTP_POST, handleActuratorChange);
     server.on("/api/sensors/all", HTTP_GET, handleSensordata);
     server.on("/api/config", handleConfig);
-    // server.serveStatic("/api/config", LITTLEFS, "/www/config.json");
-
-    // ToDo: new async server
-    // server.on("/", handleRoot);
-    // server.on("/config", handleConfig);
-    // server.on("/config/update", HTTP_POST, handleConfigUpdate);
-    // server.on("/config.json", []() {
-    //     File dataFile = LITTLEFS.open("/config.json");
-    //     server.send(200, "text/json", dataFile.readString());
-    // });
-
-    // server.onNotFound([]() {
-    //     if (!handleFileRead(server.uri())) {
-    //     server.send(404, "text/plain", "FileNotFound");
-    //     }
-    // });
-
-    // server.on("/sensordata.json", handleSensordata);
-    // server.on("/sensors.json", handleSensors);
-    // server.on("/sensortypes.json", handleSensorTypes);
-    // server.on("/buttons.json", handleButtons);
-    // server.on("/actuator/change", HTTP_POST, handleButtonChange);
-    // server.on("/reboot", []() {
-    //     server.send(200, "text/json", "{\"answer\": \"ok\"}");
-    //     Alarm.delay(100);
-    //     ESP.restart();
-    // });
-    // server.on("/time", []() { // return current device time
-    //     String time = String(now());
-    //     server.send(200, "text/json", "{\"time\": \"" + time + "\"}");
-    // });
-    // server.on("/stats.json", []() { // return current device time
-    //     server.send(200, "text/json", "{\"free_heap\": \"" + String(ESP.getFreeHeap()) + "\", "
-    //                                   "\"chip_rev\" : \"" + ESP.getChipRevision() + "\", "
-    //                                   "\"sdk\" : \"" + ESP.getSdkVersion() + "\", "
-    //                                   "\"wifi\" : \"" + WiFi.RSSI() + "\", "
-    //                                   "\"LITTLEFS_used\" : \"" + LITTLEFS.usedBytes() + "\", "
-    //                                   "\"cpu_freq\" : \"" + ESP.getCpuFreqMHz() + "\"}");
-    // });
+    server.on("/reboot", [](AsyncWebServerRequest* r) { // return current device time
+        String time = String(now());
+        r->send(200, "text/json", "{\"answer\": \"ok\"}");
+        delay(100);
+        ESP.restart();
+    });
+    server.on("/api/time", [](AsyncWebServerRequest* r) { // return current device time
+        String time = String(now());
+        r->send(200, "text/json", "{\"time\": \"" + time + "\"}");
+    });
+    server.on("/api/stats", [](AsyncWebServerRequest* r) { // return current device time
+        r->send(200, "text/json", "{\"free_heap\": \"" + String(ESP.getFreeHeap()) + "\", "
+                                      "\"chip_rev\" : \"" + ESP.getChipRevision() + "\", "
+                                      "\"sdk\" : \"" + ESP.getSdkVersion() + "\", "
+                                      "\"wifi\" : \"" + WiFi.RSSI() + "\", "
+                                      "\"LITTLEFS_used\" : \"" + LITTLEFS.usedBytes() + "\", "
+                                      "\"cpu_freq\" : \"" + ESP.getCpuFreqMHz() + "\"}"
+                                      );
+    });
 
     // init OTA update
     // @todo: activate only if jumper is set
     initOTA();
-
 
     // setup parallel task
     // xTaskCreatePinnedToCore(
@@ -243,9 +218,9 @@ void setup()
     //   0); /* Core where the task should run */
 
     // init telnetServer
-    // debug.setTelnet(&telnetServer, &telnetClient);
-    // telnetServer.begin();
-    // telnetServer.setNoDelay(true);
+    debug.setTelnet(&telnetServer, &telnetClient);
+    telnetServer.begin();
+    telnetServer.setNoDelay(true);
 
     setLEDState(LEDState::NONE);
 
@@ -291,39 +266,75 @@ void loop()
     }
 
     // add new telnet Clients
-    // if (telnetServer.hasClient())
-    // {
-    //     if (!telnetClient || !telnetClient.connected())
-    //     {
-    //         if (telnetClient)
-    //         {
-    //             telnetClient.stop();
-    //             debug.println("Telnet Client Stop");
-    //         }
-    //         telnetClient = telnetServer.available();
-    //         debug.println("New Telnet client");
-    //         telnetClient.flush();
-    //         telnetClient.println("Welcome to TerraESP");
-    //     }
-    // }
+    if (telnetServer.hasClient())
+    {
+        if (!telnetClient || !telnetClient.connected())
+        {
+            if (telnetClient)
+            {
+                telnetClient.stop();
+                debug.println("Telnet Client Stop");
+            }
+            telnetClient = telnetServer.available();
+            debug.println("New Telnet client");
+            telnetClient.flush();
+            telnetClient.println("Welcome to TerraESP");
+
+            // print NTP
+            getNtpTime();
+
+            debug.println("Timers:");
+            for (size_t i = 0; i < timers.size(); i++)
+            {
+                debug.println(timers[i]->toString());
+            }
+            
+            // debug.println("Thresholds:");
+            // for (size_t i = 0; i < thresholds.size(); i++)
+            // {
+            //     debug.println(thresholds[i]->getName());
+            // }
+        }
+    }
+
+    // read current sensor values
+    auto current = millis();
+    if( (current - last_sensors) / 1000. >= SENSORS_PAUSE_S){
+        readSensors();
+        last_sensors = current;
+    }
 
     // update thresholds -> deactivates thresholds after duration
     for (size_t i = 0; i < thresholds.size(); i++)
     {
-        Threshold *t = thresholds[i];
-        t->update();
+        thresholds[i]->update();
     }
 
     // delay, handle alarms/sensors and so on
-    Alarm.delay(10);
+    // Alarm.delay(10);
+    
+    // handle timers
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo))
+    {
+        for(size_t i=0; i<timers.size(); i++){
+            timers[i]->update(timeinfo);            
+        }
+    } else {
+        debug.println("Failed to obtain time");
+    }
+
+    delay(100);
 }
 
-void parallelTask(void * parameter){
-    while(true){
-        // Serial.println(ESP.getFreeHeap());
-        delay(100);
-    }
-}
+// void parallelTask(void *parameter)
+// {
+//     while (true)
+//     {
+//         // Serial.println(ESP.getFreeHeap());
+//         delay(100);
+//     }
+// }
 
 /**
  * @brief load settings an initialize sensors, buttons, timers, thresholds, ...
@@ -452,9 +463,9 @@ void loadSettings(fs::FS &fs)
                                          split(String((const char *)t["on"]), ':', 0).toInt(),
                                          split(String((const char *)t["on"]), ':', 1).toInt(),
                                          split(String((const char *)t["off"]), ':', 0).toInt(),
-                                         split(String((const char *)t["off"]), ':', 1).toInt(),
-                                         t["inverted"]);
+                                         split(String((const char *)t["off"]), ':', 1).toInt());
                 timer->setEventList(&events);
+                timer->setDebug(debug);
                 timers.push_back(timer);
             }
         };
@@ -505,7 +516,7 @@ void loadSettings(fs::FS &fs)
         // general settings
         JsonObject generalJSON = doc["general"];
         settings_time.dst = (bool)generalJSON["dst"];                  // daylight saving time
-        settings_time.gmt_offset_sec = (int)generalJSON["gmt_offset"]; // daylight saving time
+        settings_time.gmt_offset = (int)generalJSON["gmt_offset"]; // gmt offset
     }
 }
 
@@ -660,7 +671,7 @@ void handleSensordata(AsyncWebServerRequest *request)
 
     // send JSON response
     AsyncResponseStream *response = request->beginResponseStream("application/json");
-    serializeJson(doc, debug);
+    // serializeJson(doc, debug);
     serializeJson(doc, *response);
     request->send(response);
 }
@@ -754,7 +765,7 @@ void handleActurators(AsyncWebServerRequest *request)
 
     // send JSON response
     AsyncResponseStream *response = request->beginResponseStream("application/json");
-    serializeJson(doc, debug);
+    // serializeJson(doc, debug);
     serializeJson(doc, *response);
     request->send(response);
 }
@@ -783,21 +794,23 @@ void handleActuratorChange(AsyncWebServerRequest *request)
 
 void handleConfig(AsyncWebServerRequest *request)
 {
-// if method is POST and param exists
+    // if method is POST and param exists
     if (request->method() == HTTP_POST && request->params())
     {
 
         // ToDo
         debug.println("Config Update");
         debug.println(request->args());
-        for(size_t i=0; i<request->args(); i++){
-            debug.printf("Arg %s: %s\n", request->argName(i), request->arg(request->argName(i)).c_str());
+        for (size_t i = 0; i < request->args(); i++)
+        {
+            debug.printf("Arg %s: %s\n", request->argName(i).c_str(), request->arg(request->argName(i)).c_str());
         }
         DynamicJsonDocument doc(4096);
         //JsonObject &rootNew = jsonBufferNew.parseObject(server.arg("data"));
         DeserializationError error = deserializeJson(doc, request->arg(request->argName(0)));
 
-        if(error){
+        if (error)
+        {
             debug.println("JSON config not valid");
             debug.println(error.c_str());
             request->send(500, "text/html", error.c_str());
@@ -806,8 +819,10 @@ void handleConfig(AsyncWebServerRequest *request)
 
         // check for fields
         String fields[] = {"sensors", "actuators", "timers", "thresholds", "general", "network"};
-        for(size_t i=0; i<5; i++){
-            if(!doc.containsKey(fields[i])){
+        for (size_t i = 0; i < 5; i++)
+        {
+            if (!doc.containsKey(fields[i]))
+            {
                 debug.printf("JSON config misses key %s!", fields[i].c_str());
                 request->send(500, "text/html", "Invalid JSON data! Key " + fields[i] + " missing.");
                 return;
@@ -833,9 +848,8 @@ void handleConfig(AsyncWebServerRequest *request)
         serializeJson(doc, dataFile);
         dataFile.close();
         // send success
-        // server.send(200, "text/plain", "ok");
         request->send(200, "text/plain", "ok, will reboot now");
-        // Alarm.delay(100);
+        delay(1000);
         // restart to read clean values
         ESP.restart();
     }
@@ -851,20 +865,20 @@ void handleConfig(AsyncWebServerRequest *request)
  * @brief gets called when an Alarm was triggered. Checks all Timers for the right alarm and activates actuator
  * 
  */
-void timerCallback()
-{
-    AlarmId id = Alarm.getTriggeredAlarmId();
-    debug.printf("Timer callback for Id %d\n", id);
-    // find the triggered alarm by ID
-    for (size_t i = 0; i < timers.size(); i++)
-    {
-        Timer *t = timers[i];
-        if (t->checkAlarmId(id))
-        {
-            return;
-        }
-    }
-}
+// void timerCallback()
+// {
+//     AlarmId id = Alarm.getTriggeredAlarmId();
+//     debug.printf("Timer callback for Id %d\n", id);
+//     // find the triggered alarm by ID
+//     // for (size_t i = 0; i < timers.size(); i++)
+//     // {
+//     //     Timer *t = timers[i];
+//     //     if (t->checkAlarmId(id))
+//     //     {
+//     //         return;
+//     //     }
+//     // }
+// }
 
 /**
  * @brief Initialize timers, return false if time is not synced
@@ -882,30 +896,18 @@ bool initTimers()
 
     struct tm ti;
     getLocalTime(&ti);
-    time_t t = mktime(&ti) + settings_time.gmt_offset_sec;
-    ti = *localtime(&t);
-    unsigned int time_min = ti.tm_hour * 60 + ti.tm_min;
+    // time_t t = mktime(&ti) + settings_time.gmt_offset*3600;
+    // time_t t = mktime(&ti);
+    // ti = *localtime(&t);
+    // unsigned int time_min = ti.tm_hour * 60 + ti.tm_min;
 
     for (size_t i = 0; i < timers.size(); i++)
     {
         Timer *t = timers[i];
         if (!t->isInitialized())
         {
-            t->init(time_min, timerCallback);
+            t->init(ti);
         }
-        // debug.printf("Init timer %s on: %02d:%02d, off: %02d:%02d\n",
-        // a->name.c_str(), a->alarmOnHour, a->alarmOnMinute, a->alarmOffHour, a->alarmOffMinute);
-        // // pinMode(a->pin, OUTPUT);
-        // a->alarmOnId = Alarm.alarmRepeat(a->alarmOnHour, a->alarmOnMinute, 0, timerCallback);
-        // a->alarmOffId = Alarm.alarmRepeat(a->alarmOffHour, a->alarmOffMinute, 0, timerCallback);
-        // a->init = true;
-
-        // // activate pin if we are in the timespan
-        // unsigned int alarm_on = a->alarmOnHour * 60 + a->alarmOnMinute;
-        // unsigned int alarm_off = a->alarmOffHour * 60 + a->alarmOffMinute;
-        // if(alarm_on < time_min && time_min < alarm_off){
-        //     digitalWrite(a->pin, a->inverted ? LOW : HIGH);
-        // }
     }
 
     return true;
@@ -921,9 +923,9 @@ time_t getNtpTime()
     //configTime(-3600, -3600, "69.10.161.7");
 
     debug.printf("Update time with GMT+%02d and DST: %d\n",
-                 settings_time.gmt_offset_sec / 3600, settings_time.dst);
+                 settings_time.gmt_offset, settings_time.dst);
 
-    configTime(0, settings_time.dst ? 3600 : 0, "0.de.pool.ntp.org", "1.de.pool.ntp.org");
+    configTime(settings_time.gmt_offset * 3600, settings_time.dst ? 3600 : 0, "0.de.pool.ntp.org", "1.de.pool.ntp.org");
     struct tm timeinfo;
     if (!getLocalTime(&timeinfo))
     {
@@ -934,7 +936,7 @@ time_t getNtpTime()
         debug.print("Synced time to: ");
         debug.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
     }
-    return mktime(&timeinfo) + settings_time.gmt_offset_sec;
+    return mktime(&timeinfo);
 }
 
 /**************************************
@@ -1065,32 +1067,4 @@ void updateLEDState()
 
     statusLED.Show();
     debug.printf("LED brightness: %d\n", statusLED.GetPixelColor(0).CalculateBrightness());
-}
-
-/**************************************
- *
- * Create mock values for chart test
- *
- *************************************/
-void randomValues(size_t count)
-{
-    // time_t t;
-    // float temp;
-    // float humid;
-
-    // for (size_t i = 0; i < count; i++) {
-    //     // remove first buffer element if full
-    //     if (buffer_time.isFull()) {
-    //         buffer_time.pull(&t);
-    //         buffer_temp.pull(&temp);
-    //         buffer_humid.pull(&humid);
-    //     }
-
-    //     t = now() + i;
-    //     temp = humid = (float) i;
-    //     // add values to buffer
-    //     buffer_time.add(t);
-    //     buffer_temp.add(temp);
-    //     buffer_humid.add(humid);
-    // }
 }

@@ -1,32 +1,109 @@
 {
-    "network" :
+    "general": {
+        "gmt_offset": "1",
+        "dst": false
+    },
+    "network": {
+        "hostname": "terraesp"
+    },
+    "timers": [
         {
-            "hostname" : "terraesp"
+            "name": "day",
+            "actuator": "LED_RIGHT",
+            "on": "10:00",
+            "off": "22:00",
+            "inverted": false
         },
-    "timers" : [
-        {"name" : "night", "actuator" : "SSR1", "on" : "22:00", "off" : "10:00", "inverted": false},
-        {"name" : "day", "actuator" : "SSR2", "on" : "10:00", "off" : "22:00", "inverted": false}
-        ],
-    "sensors" : [
-        { "name" : "DS18B20 Sensor", "type" : "ds18b20", "gpio" : 15, "enabled" : false},
-        { "name" : "top", "type" : "SHT31", "gpio" : 68, "enabled" : true},
-        { "name" : "bottom", "type" : "SHT31", "gpio" : 69, "enabled" : true}
-        ],
-    "actuators" : [
-        {"name" : "SSR0", "gpio" : 12, "type" : "toggle"},
-        {"name" : "SSR1", "gpio" : 14, "type" : "toggle"},
-        {"name" : "SSR2", "gpio" : 27, "type" : "toggle"},
-        {"name" : "SSR3", "gpio" : 26, "type" : "toggle"},
-        {"name" : "PWM0", "gpio" : 4, "type" : "range", "min" : 0, "max" : 1023},
-        {"name" : "PWM1", "gpio" : 16, "type" : "range", "min" : 0, "max" : 1023},
-        {"name" : "PWM2", "gpio" : 17, "type" : "range", "min" : 0, "max" : 1023},
-        {"name" : "PWM3", "gpio" : 19, "type" : "range", "min" : 0, "max" : 1023}
+        {
+            "name": "day_extra",
+            "actuator": "LED_LEFT",
+            "on": "14:00",
+            "off": "18:00",
+            "inverted": false
+        },
+        {
+            "name": "fans",
+            "actuator": "FANS",
+            "on": "10:00",
+            "off": "22:10",
+            "inverted": false
+        }
     ],
-    "thresholds" : [
-        {"name": "rain_top", "duration": 10, "threshold": 70, "comparator": "<", "actuator": "SSR0", "inverted": false, "gap": 600, "sensor": "top", "sensor_type": "humidity"},
-        {"name": "rain_bottom", "duration": 10, "threshold": 60, "comparator": "<", "actuator": "SSR0", "inverted": false, "gap": 60, "sensor": "bottom", "sensor_type": "humidity"}
+    "sensors": [
+        {
+            "name": "DS18B20 Sensor",
+            "type": "ds18b20",
+            "gpio": 15,
+            "enabled": false
+        },
+        {
+            "name": "top",
+            "type": "SHT31",
+            "gpio": 69,
+            "enabled": true
+        }
     ],
-    "general" : {
-        "dst" : false
-    }
+    "actuators": [
+        {
+            "name": "LED_RIGHT",
+            "type": "toggle",
+            "gpio": 12
+        },
+        {
+            "name": "LED_LEFT",
+            "type": "toggle",
+            "gpio": 14
+        },
+        {
+            "name": "SSR2",
+            "type": "toggle",
+            "gpio": 27
+        },
+        {
+            "name": "Rain",
+            "type": "toggle",
+            "gpio": 26
+        },
+        {
+            "name": "FANS",
+            "type": "range",
+            "gpio": 4,
+            "min": 0,
+            "max": 1023
+        },
+        {
+            "name": "PWM1",
+            "type": "range",
+            "gpio": 16,
+            "min": 0,
+            "max": 1023
+        },
+        {
+            "name": "PWM2",
+            "type": "range",
+            "gpio": 17,
+            "min": 0,
+            "max": 1023
+        },
+        {
+            "name": "FAN_RIGHT",
+            "type": "range",
+            "gpio": 19,
+            "min": 0,
+            "max": 1023
+        }
+    ],
+    "thresholds": [
+        {
+            "name": "rain",
+            "duration": 10,
+            "threshold": "50",
+            "comparator": "<",
+            "actuator": "Rain",
+            "inverted": false,
+            "gap": 600,
+            "sensor": "top",
+            "sensor_type": "humidity"
+        }
+    ]
 }
