@@ -1,0 +1,6 @@
+(fp_lib_table
+  (lib (name G3MB202PDC12)(type KiCad)(uri ${KIPRJMOD}/terraesp.pretty/G3MB202PDC12)(options "")(descr ""))
+  (lib (name SS54)(type KiCad)(uri ${KIPRJMOD}/terraesp.pretty/SS54)(options "")(descr ""))
+  (lib (name eec)(type KiCad)(uri "${KIPRJMOD}/terraesp.pretty/Trans_Diodes Inc._DMG4800LSD-13/eec.pretty")(options "")(descr ""))
+  (lib (name Fuse_holder)(type KiCad)(uri ${KIPRJMOD}/terraesp.pretty/Fuse.pretty)(options "")(descr ""))
+)

@@ -1,0 +1,5 @@
+(sym_lib_table
+  (lib (name eec)(type Legacy)(uri "${KIPRJMOD}/terraesp.pretty/Trans_Diodes Inc._DMG4800LSD-13/eec.lib")(options "")(descr ""))
+  (lib (name G3MB202PDC12)(type Legacy)(uri ${KIPRJMOD}/terraesp.pretty/G3MB202PDC12/G3MB202PDC12.lib)(options "")(descr ""))
+  (lib (name SS54)(type Legacy)(uri ${KIPRJMOD}/terraesp.pretty/SS54/SS54.lib)(options "")(descr ""))
+)

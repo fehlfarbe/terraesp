@@ -1,0 +1,217 @@
+EESchema Schematic File Version 4
+EELAYER 30 0
+EELAYER END
+$Descr A4 11693 8268
+encoding utf-8
+Sheet 5 5
+Title ""
+Date ""
+Rev ""
+Comp ""
+Comment1 ""
+Comment2 ""
+Comment3 ""
+Comment4 ""
+$EndDescr
+$Comp
+L Device:R R13
+U 1 1 6021D2BC
+P 2950 2350
+AR Path="/6021C4FF/6021D2BC" Ref="R13"  Part="1" 
+AR Path="/60272C8A/6021D2BC" Ref="R16"  Part="1" 
+AR Path="/60277402/6021D2BC" Ref="R19"  Part="1" 
+AR Path="/6027BEB1/6021D2BC" Ref="R22"  Part="1" 
+F 0 "R22" H 3020 2396 50  0000 L CNN
+F 1 "220" H 3020 2305 50  0000 L CNN
+F 2 "Resistor_SMD:R_1206_3216Metric" V 2880 2350 50  0001 C CNN
+F 3 "~" H 2950 2350 50  0001 C CNN
+	1    2950 2350
+	1    0    0    -1  
+$EndComp
+$Comp
+L Device:R R11
+U 1 1 6021DAC4
+P 2200 3250
+AR Path="/6021C4FF/6021DAC4" Ref="R11"  Part="1" 
+AR Path="/60272C8A/6021DAC4" Ref="R14"  Part="1" 
+AR Path="/60277402/6021DAC4" Ref="R17"  Part="1" 
+AR Path="/6027BEB1/6021DAC4" Ref="R20"  Part="1" 
+F 0 "R20" V 1993 3250 50  0000 C CNN
+F 1 "1k" V 2084 3250 50  0000 C CNN
+F 2 "Resistor_SMD:R_1206_3216Metric" V 2130 3250 50  0001 C CNN
+F 3 "~" H 2200 3250 50  0001 C CNN
+	1    2200 3250
+	0    1    1    0   
+$EndComp
+$Comp
+L Device:R R12
+U 1 1 6021E1C0
+P 2500 3400
+AR Path="/6021C4FF/6021E1C0" Ref="R12"  Part="1" 
+AR Path="/60272C8A/6021E1C0" Ref="R15"  Part="1" 
+AR Path="/60277402/6021E1C0" Ref="R18"  Part="1" 
+AR Path="/6027BEB1/6021E1C0" Ref="R21"  Part="1" 
+F 0 "R21" H 2570 3446 50  0000 L CNN
+F 1 "10k" H 2570 3355 50  0000 L CNN
+F 2 "Resistor_SMD:R_1206_3216Metric" V 2430 3400 50  0001 C CNN
+F 3 "~" H 2500 3400 50  0001 C CNN
+	1    2500 3400
+	1    0    0    -1  
+$EndComp
+$Comp
+L Transistor_BJT:BC850 Q3
+U 1 1 6021F4C0
+P 2850 3250
+AR Path="/6021C4FF/6021F4C0" Ref="Q3"  Part="1" 
+AR Path="/60272C8A/6021F4C0" Ref="Q4"  Part="1" 
+AR Path="/60277402/6021F4C0" Ref="Q5"  Part="1" 
+AR Path="/6027BEB1/6021F4C0" Ref="Q6"  Part="1" 
+F 0 "Q6" H 3041 3296 50  0000 L CNN
+F 1 "Q_NPN_BCE" H 3041 3205 50  0000 L CNN
+F 2 "Package_TO_SOT_SMD:SOT-23" H 3050 3350 50  0001 C CNN
+F 3 "~" H 2850 3250 50  0001 C CNN
+	1    2850 3250
+	1    0    0    -1  
+$EndComp
+$Comp
+L Device:LED D3
+U 1 1 60220253
+P 2950 2750
+AR Path="/6021C4FF/60220253" Ref="D3"  Part="1" 
+AR Path="/60272C8A/60220253" Ref="D4"  Part="1" 
+AR Path="/60277402/60220253" Ref="D5"  Part="1" 
+AR Path="/6027BEB1/60220253" Ref="D6"  Part="1" 
+F 0 "D6" V 2989 2632 50  0000 R CNN
+F 1 "LED" V 2898 2632 50  0000 R CNN
+F 2 "LED_SMD:LED_1206_3216Metric" H 2950 2750 50  0001 C CNN
+F 3 "~" H 2950 2750 50  0001 C CNN
+	1    2950 2750
+	0    -1   -1   0   
+$EndComp
+$Comp
+L Connector:Screw_Terminal_01x02 J14
+U 1 1 60221387
+P 5275 2775
+AR Path="/6021C4FF/60221387" Ref="J14"  Part="1" 
+AR Path="/60272C8A/60221387" Ref="J16"  Part="1" 
+AR Path="/60277402/60221387" Ref="J17"  Part="1" 
+AR Path="/6027BEB1/60221387" Ref="J18"  Part="1" 
+F 0 "J18" H 5355 2767 50  0000 L CNN
+F 1 "SSR_OUT" H 5355 2676 50  0000 L CNN
+F 2 "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal" H 5275 2775 50  0001 C CNN
+F 3 "~" H 5275 2775 50  0001 C CNN
+	1    5275 2775
+	1    0    0    -1  
+$EndComp
+$Comp
+L Device:Fuse F1
+U 1 1 60222293
+P 4825 2875
+AR Path="/6021C4FF/60222293" Ref="F1"  Part="1" 
+AR Path="/60272C8A/60222293" Ref="F2"  Part="1" 
+AR Path="/60277402/60222293" Ref="F3"  Part="1" 
+AR Path="/6027BEB1/60222293" Ref="F4"  Part="1" 
+F 0 "F4" V 4628 2875 50  0000 C CNN
+F 1 "2A" V 4719 2875 50  0000 C CNN
+F 2 "Fuse_holder:ASI PTF-76 5x20mm Fuse Holder" V 4755 2875 50  0001 C CNN
+F 3 "~" H 4825 2875 50  0001 C CNN
+	1    4825 2875
+	0    1    1    0   
+$EndComp
+$Comp
+L power:GND #PWR02
+U 1 1 60223A19
+P 2950 3650
+AR Path="/6021C4FF/60223A19" Ref="#PWR02"  Part="1" 
+AR Path="/60272C8A/60223A19" Ref="#PWR04"  Part="1" 
+AR Path="/60277402/60223A19" Ref="#PWR06"  Part="1" 
+AR Path="/6027BEB1/60223A19" Ref="#PWR08"  Part="1" 
+F 0 "#PWR08" H 2950 3400 50  0001 C CNN
+F 1 "GND" H 2955 3477 50  0000 C CNN
+F 2 "" H 2950 3650 50  0001 C CNN
+F 3 "" H 2950 3650 50  0001 C CNN
+	1    2950 3650
+	1    0    0    -1  
+$EndComp
+$Comp
+L power:+5V #PWR01
+U 1 1 60224CE2
+P 2950 1950
+AR Path="/6021C4FF/60224CE2" Ref="#PWR01"  Part="1" 
+AR Path="/60272C8A/60224CE2" Ref="#PWR03"  Part="1" 
+AR Path="/60277402/60224CE2" Ref="#PWR05"  Part="1" 
+AR Path="/6027BEB1/60224CE2" Ref="#PWR07"  Part="1" 
+F 0 "#PWR07" H 2950 1800 50  0001 C CNN
+F 1 "+5V" H 2965 2123 50  0000 C CNN
+F 2 "" H 2950 1950 50  0001 C CNN
+F 3 "" H 2950 1950 50  0001 C CNN
+	1    2950 1950
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	2950 1950 2950 2200
+Wire Wire Line
+	2950 2500 2950 2600
+Wire Wire Line
+	2350 3250 2500 3250
+Wire Wire Line
+	2500 3250 2650 3250
+Connection ~ 2500 3250
+Wire Wire Line
+	2950 3050 2950 3025
+Wire Wire Line
+	2950 3450 2950 3550
+Wire Wire Line
+	2500 3550 2950 3550
+Connection ~ 2950 3550
+Wire Wire Line
+	2950 3550 2950 3650
+$Comp
+L G3MB202PDC12:G3MB202PDC12 K1
+U 1 1 60234B0C
+P 4100 3350
+AR Path="/6021C4FF/60234B0C" Ref="K1"  Part="1" 
+AR Path="/60272C8A/60234B0C" Ref="K2"  Part="1" 
+AR Path="/60277402/60234B0C" Ref="K3"  Part="1" 
+AR Path="/6027BEB1/60234B0C" Ref="K4"  Part="1" 
+F 0 "K4" H 4678 3467 50  0000 L CNN
+F 1 "G3MB202PDC12" H 4678 3376 50  0000 L CNN
+F 2 "G3MB202PDC12:RELAY_G3MB202PDC12" H 4100 3350 50  0001 L BNN
+F 3 "" H 4100 3350 50  0001 L BNN
+F 4 "Omron" H 4100 3350 50  0001 L BNN "MANUFACTURER"
+F 5 "N/A" H 4100 3350 50  0001 L BNN "PARTREV"
+F 6 "Manufacturer Recommendation" H 4100 3350 50  0001 L BNN "STANDARD"
+	1    4100 3350
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	3600 3025 2950 3025
+Connection ~ 2950 3025
+Wire Wire Line
+	2950 3025 2950 2900
+Wire Wire Line
+	2950 1950 3750 1950
+Wire Wire Line
+	3750 1950 3750 3025
+Connection ~ 2950 1950
+Wire Wire Line
+	5075 2875 4975 2875
+Wire Wire Line
+	5075 2775 4550 2775
+Wire Wire Line
+	4550 2775 4550 3025
+Text HLabel 1700 3250 0    50   Input ~ 0
+INPUT
+Wire Wire Line
+	1700 3250 2050 3250
+Text HLabel 4250 2150 1    50   Input ~ 0
+AC_L
+Text HLabel 4375 2150 1    50   Input ~ 0
+AC_N
+Wire Wire Line
+	4250 3025 4250 2150
+Wire Wire Line
+	4375 2150 4375 2875
+Wire Wire Line
+	4375 2875 4675 2875
+$EndSCHEMATC

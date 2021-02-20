@@ -1,0 +1,129 @@
+EESchema-LIBRARY Version 2.4
+#encoding utf-8
+#
+# DMG4800LSD
+#
+DEF DMG4800LSD Q 0 40 Y Y 1 F N
+F0 "Q" -350 150 50 H V C CNN
+F1 "DMG4800LSD" 0 150 50 H V C CNN
+F2 "" 0 0 50 H I C CNN
+F3 "" 0 0 50 H I C CNN
+DRAW
+S -200 50 200 -350 0 1 0 N
+X S1 1 -400 0 200 R 50 50 1 1 I
+X G1 2 -400 -100 200 R 50 50 1 1 I
+X S2 3 -400 -200 200 R 50 50 1 1 I
+X G2 4 -400 -300 200 R 50 50 1 1 I
+X D2B 5 400 -300 200 L 50 50 1 1 I
+X D2A 6 400 -200 200 L 50 50 1 1 I
+X D1B 7 400 -100 200 L 50 50 1 1 I
+X D1A 8 400 0 200 L 50 50 1 1 I
+ENDDRAW
+ENDDEF
+#
+# DMG4800LSD-13
+#
+DEF DMG4800LSD-13 Q 0 40 Y Y 2 L N
+F0 "Q" 0 400 50 H V L CNN
+F1 "DMG4800LSD-13" 0 500 50 H V L CNN
+F2 "Diodes_Inc.-SO-8-03_2017-0-*" 0 600 50 H I L CNN
+F3 "https://www.diodes.com/assets/Datasheets/ds31858.pdf" 0 700 50 H I L CNN
+F4 "No" 0 800 50 H I L CNN "automotive"
+F5 "NA" 0 900 50 H I L CNN "automotive grade"
+F6 "Trans" 0 1000 50 H I L CNN "category"
+F7 "7.5A" 0 1100 50 H I L CNN "continuous drain current"
+F8 "False" 0 1200 50 H I L CNN "depletion mode"
+F9 "Discrete Semiconductors" 0 1300 50 H I L CNN "device class L1"
+F10 "Transistors" 0 1400 50 H I L CNN "device class L2"
+F11 "MOSFETs" 0 1500 50 H I L CNN "device class L3"
+F12 "MOSFET 2N-CH 30V 7.5A 8SO" 0 1600 50 H I L CNN "digikey description"
+F13 "DMG4800LSD-13DICT-ND" 0 1700 50 H I L CNN "digikey part number"
+F14 "30V" 0 1800 50 H I L CNN "drain to source breakdown voltage"
+F15 "12mΩ" 0 1900 50 H I L CNN "drain to source resistance"
+F16 "30V" 0 2000 50 H I L CNN "drain to source voltage"
+F17 "https://www.diodes.com/assets/Package-Files/SO-8.pdf" 0 2100 50 H I L CNN "footprint url"
+F18 "8.56nC @ 5V" 0 2200 50 H I L CNN "gate charge at vgs"
+F19 "25V" 0 2300 50 H I L CNN "gate to source voltage"
+F20 "1.7mm" 0 2400 50 H I L CNN "height"
+F21 "798pF @ 10V" 0 2500 50 H I L CNN "input capacitace at vds"
+F22 "Yes" 0 2600 50 H I L CNN "lead free"
+F23 "7c6ed091e78dd931" 0 2700 50 H I L CNN "library id"
+F24 "Diodes Inc." 0 2800 50 H I L CNN "manufacturer"
+F25 "0.94V" 0 2900 50 H I L CNN "max forward diode voltage"
+F26 "+150°C" 0 3000 50 H I L CNN "max junction temp"
+F27 "MOSFET Dual N-Ch 30V VDSS 25 Vgss 42A IDM" 0 3100 50 H I L CNN "mouser description"
+F28 "621-DMG4800LSD-13" 0 3200 50 H I L CNN "mouser part number"
+F29 "2" 0 3300 50 H I L CNN "number of N channels"
+F30 "2" 0 3400 50 H I L CNN "number of channels"
+F31 "SO-8" 0 3500 50 H I L CNN "package"
+F32 "1.17W" 0 3600 50 H I L CNN "power dissipation"
+F33 "42A" 0 3700 50 H I L CNN "pulse drain current"
+F34 "Yes" 0 3800 50 H I L CNN "rohs"
+F35 "107°C/W" 0 3900 50 H I L CNN "rthja max"
+F36 "0.1mm" 0 4000 50 H I L CNN "standoff height"
+F37 "+150°C" 0 4100 50 H I L CNN "temperature range high"
+F38 "-55°C" 0 4200 50 H I L CNN "temperature range low"
+F39 "1.6V" 0 4300 50 H I L CNN "threshold vgs max"
+F40 "0.8V" 0 4400 50 H I L CNN "threshold vgs min"
+F41 "8S" 0 4500 50 H I L CNN "transconductance"
+F42 "26.33ns" 0 4600 50 H I L CNN "turn off delay time"
+F43 "5.03ns" 0 4700 50 H I L CNN "turn on delay time"
+F44 "0.72V" 0 4800 50 H I L CNN "typ forward diode voltage"
+DRAW
+C 400 -80 10 1 1 0 N
+C 400 80 10 1 1 0 N
+C 400 -80 10 2 1 0 N
+C 400 80 10 2 1 0 N
+P 2 1 1 0 240 -100 240 100 N
+P 2 1 1 0 270 -80 400 -80 N
+P 2 1 1 0 270 -60 270 -100 N
+P 2 1 1 0 270 20 270 -20 N
+P 2 1 1 0 270 60 270 100 N
+P 2 1 1 0 270 80 400 80 N
+P 2 1 1 0 290 0 340 -30 N
+P 2 1 1 0 290 0 340 30 N
+P 2 1 1 0 300 0 400 0 N
+P 2 1 1 0 330 10 330 -20 N
+P 2 1 1 0 340 30 340 -30 N
+P 2 1 1 0 400 -80 470 -80 N
+P 2 1 1 0 400 200 500 200 N
+P 2 1 1 0 450 -20 490 -20 N
+P 2 1 1 0 470 -80 470 80 N
+P 2 1 1 0 470 20 450 -20 N
+P 2 1 1 0 470 20 450 20 N
+P 2 1 1 0 470 20 490 20 N
+P 2 1 1 0 470 80 400 80 N
+P 2 1 1 0 490 -20 470 20 N
+P 2 2 1 0 240 -100 240 100 N
+P 2 2 1 0 270 -80 400 -80 N
+P 2 2 1 0 270 -60 270 -100 N
+P 2 2 1 0 270 20 270 -20 N
+P 2 2 1 0 270 60 270 100 N
+P 2 2 1 0 270 80 400 80 N
+P 2 2 1 0 290 0 340 -30 N
+P 2 2 1 0 290 0 340 30 N
+P 2 2 1 0 300 0 400 0 N
+P 2 2 1 0 330 10 330 -20 N
+P 2 2 1 0 340 30 340 -30 N
+P 2 2 1 0 400 -80 470 -80 N
+P 2 2 1 0 400 200 400 80 N
+P 2 2 1 0 450 -20 490 -20 N
+P 2 2 1 0 470 -80 470 80 N
+P 2 2 1 0 470 20 450 -20 N
+P 2 2 1 0 470 20 450 20 N
+P 2 2 1 0 470 20 490 20 N
+P 2 2 1 0 470 80 400 80 N
+P 2 2 1 0 490 -20 470 20 N
+P 2 2 1 0 500 200 400 200 N
+X S1 1 400 -200 200 U 40 0 1 1 P
+X G1 2 100 0 140 R 40 0 1 1 P
+X D1 7 400 300 220 D 40 0 1 1 P
+X D1 8 500 300 100 D 40 0 1 1 P
+X S2 3 400 -200 200 U 40 0 2 1 P
+X G2 4 100 0 140 R 40 0 2 1 P
+X D2 5 400 300 120 D 40 0 2 1 P
+X D2 6 500 300 100 D 40 0 2 1 P
+ENDDRAW
+ENDDEF
+#
+#End Library

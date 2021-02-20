@@ -1,0 +1,29 @@
+EESchema-LIBRARY Version 2.3
+#encoding utf-8
+#(c) SnapEDA 2016 (snapeda.com)
+#This work is licensed under a Creative Commons Attribution-ShareAlike 4.0 International License (CC BY-SA) with Design Exception 1.0
+#
+# SS54
+#
+DEF SS54 D 0 40 N N 1 L N
+F0 "D" 100 19 50 H V L BNN
+F1 "SS54" 100 -91 50 H V L BNN
+F2 "DO-214AC" 0 0 50 H I L BNN
+F3 "" 0 0 50 H I L BNN
+DRAW
+P 2 0 0 10 -50 -50 50 0 N
+P 2 0 0 10 50 0 -50 50 N
+P 2 0 0 10 50 50 50 0 N
+P 2 0 0 10 -50 50 -50 0 N
+P 2 0 0 10 -50 0 -50 -50 N
+P 2 0 0 10 50 0 50 -50 N
+P 2 0 0 10 50 50 70 60 N
+P 2 0 0 10 50 -50 30 -60 N
+P 2 0 0 6 -100 0 -50 0 N
+P 2 0 0 6 100 0 50 0 N
+X ~ A -100 0 0 R 40 40 0 0 P 
+X ~ C 100 0 0 L 40 40 0 0 P 
+ENDDRAW
+ENDDEF
+#
+# End Library
