@@ -6,7 +6,7 @@
 #include <ESPAsyncWebServer.h>
 #include <ESPAsyncWiFiManager.h>
 #include <time.h>
-#include <Time.h>
+#include <TimeLib.h>
 // #include <TimeAlarms.h>
 #include <FS.h>
 #include <LITTLEFS.h>
@@ -167,7 +167,7 @@ void setup()
     // init timers
     while (!initTimers())
     {
-        Alarm.delay(100);
+        delay(100);
     }
 
     // timer for sensors, read new sensor values every 120s

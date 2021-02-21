@@ -1,6 +1,8 @@
 #ifndef TIMER_H
 #define TIMER_H
 #include <Arduino.h>
+#include <time.h>
+#include <TimeLib.h>
 #include <RingBufCPP.h>
 #include <datatypes.h>
 #include <Actuator.h>

@@ -1,6 +1,8 @@
 #ifndef THRESHOLD_H
 #define THRESHOLD_H
 #include <Arduino.h>
+#include <time.h>
+#include <TimeLib.h>
 #include <datatypes.h>
 #include <Actuator.h>
 #include <RingBufCPP.h>
