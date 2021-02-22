@@ -1,5 +1,4 @@
 #include <Event.h>
-#include <Time.h>
 
 Event::Event() : time(now()), type(Event::Type::UNKNOWN){
 

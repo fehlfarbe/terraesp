@@ -56,6 +56,7 @@ The WiFi password is saved without encryption on the device. Also OTA-update has
 ## Problems
 
 * If PlatformIO can't find the libraries, switch to the cloned directory, open a terminal and type `pio lib install`. The command should download all necessary libraries.
+* Windows users: if you get errors like `error: 'timeinfo' has incomplete type` just delete the `Time.h` header in `.pio/libdeps/{ota,usb}/Time`. The bug happens only on Windows because it's not case-sensitive and mixes the `time.h` header with `Time.h` of TimeLib library.
 
 ## PCB
 
