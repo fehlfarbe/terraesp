@@ -1,4 +1,4 @@
 #!/bin/bash
 
-./create_www.sh
+# ./create_www.sh
 ./mklittlefs "$@"
