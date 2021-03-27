@@ -125,21 +125,6 @@ void setup()
     statusLED.Begin();
     setLEDState(LEDState::WIFI_STATE_CONNECTING);
 
-    // init File system and show content
-    if (!LITTLEFS.begin(false))
-    {
-        setLEDState(LEDState::ERROR);
-        while (true)
-        {
-            debug.println("Failed to mount file system");
-            delay(1000);
-        }
-    }
-    listDir(LITTLEFS, "/", 0);
-
-    // settings
-    loadSettings(LITTLEFS);
-
     // WiFi and HTTP
     wifiManager.setConnectTimeout(10);
     if (!wifiManager.autoConnect())
@@ -160,6 +145,25 @@ void setup()
     {
         Serial.println("mDNS responder started");
     }
+
+    // init OTA update
+    // @todo: activate only if jumper is set
+    initOTA();
+
+    // init File system and show content
+    if (!LITTLEFS.begin(false))
+    {
+        setLEDState(LEDState::ERROR);
+        while (true)
+        {
+            debug.println("Failed to mount file system");
+            delay(1000);
+        }
+    }
+    listDir(LITTLEFS, "/", 0);
+
+    // settings
+    loadSettings(LITTLEFS);
 
     // sync time
     setSyncProvider(getNtpTime);
@@ -202,10 +206,6 @@ void setup()
                                       "\"cpu_freq\" : \"" + ESP.getCpuFreqMHz() + "\"}"
                                       );
     });
-
-    // init OTA update
-    // @todo: activate only if jumper is set
-    initOTA();
 
     // setup parallel task
     // xTaskCreatePinnedToCore(
@@ -283,11 +283,11 @@ void loop()
             // print NTP
             getNtpTime();
 
-            debug.println("Timers:");
-            for (size_t i = 0; i < timers.size(); i++)
-            {
-                debug.println(timers[i]->toString());
-            }
+            // debug.println("Timers:");
+            // for (size_t i = 0; i < timers.size(); i++)
+            // {
+            //     debug.println(timers[i]->toString());
+            // }
             
             // debug.println("Thresholds:");
             // for (size_t i = 0; i < thresholds.size(); i++)
@@ -369,30 +369,44 @@ void loadSettings(fs::FS &fs)
             String type((const char *)s["type"]);
             type.toLowerCase();
             THSensor *thsensor = nullptr;
-            if (type.startsWith("dht"))
+            if (type.startsWith("dht") || type.startsWith("am23"))
             {
-                DHTType dht_type = DHTType::UNKNOWN;
-                if (type == "dht22")
-                {
-                    dht_type = DHTType::DHT22;
+                // DHTType dht_type = DHTType::UNKNOWN;
+                uint8_t dht_type = 0;
+                if (type == "dht22" || type == "am2302" || type == "am2321"){
+                    dht_type = DHT22;
                 }
-                else if (type == "am2302")
-                {
-                    dht_type = DHTType::AM2302;
+                else if(type == "dht11") {
+                    dht_type = DHT11;
                 }
-                else if (type == "dht21")
-                {
-                    dht_type = DHTType::DHT21;
+                else if(type == "dht21" || type == "am2301"){
+                    dht_type = DHT21;
                 }
-                else if (type == "dht11")
-                {
-                    dht_type = DHTType::DHT11;
-                }
-                else if (type == "dht2301")
-                {
-                    dht_type = DHTType::AM2301;
-                }
-                if (dht_type != DHTType::UNKNOWN)
+                // if (type == "dht22")
+                // {
+                //     dht_type = DHTType::DHT22;
+                // }
+                // else if (type == "am2302")
+                // {
+                //     dht_type = DHTType::AM2302;
+                // }
+                // else if (type == "dht21")
+                // {
+                //     dht_type = DHTType::DHT21;
+                // }
+                // else if (type == "dht11")
+                // {
+                //     dht_type = DHTType::DHT11;
+                // }
+                // else if (type == "dht2301")
+                // {
+                //     dht_type = DHTType::AM2301;
+                // }
+                // if (dht_type != DHTType::UNKNOWN)
+                // {
+                //     thsensor = new DHT11Sensor(s["name"], s["gpio"], dht_type);
+                // }
+                if (dht_type != 0)
                 {
                     thsensor = new DHT11Sensor(s["name"], s["gpio"], dht_type);
                 }

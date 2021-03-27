@@ -110,8 +110,8 @@ bool Timer::update(struct tm timeinfo){
     bool reversed = end < start;
     bool in_range = (!reversed && (start <= current && current < end)) || (reversed && (current >= start || current < end));
 
-    debug.printf("%s: current=%d start=%d end=%d in_range=%d\n", name.c_str(), current, start, end, in_range);
-    debug.println();
+    // debug.printf("%s: current=%d start=%d end=%d in_range=%d\n", name.c_str(), current, start, end, in_range);
+    // debug.println();
 
     // check if timer on should be triggered
     if(!isTurnedOn() && in_range){

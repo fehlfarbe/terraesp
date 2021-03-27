@@ -5,11 +5,12 @@
 #include "datatypes.h"
 //#include <DHT.h>
 // use Rob Tillaart's DHTlib because of NaN errors in Adafruit lib
-#include <dht.h>
+// #include <dht.h>
+#include <DHT.h>
 
 class DHT11Sensor : public THSensor {
     public:
-        DHT11Sensor(String name, uint8_t pin, DHTType type);
+        DHT11Sensor(String name, uint8_t pin, uint8_t type);
 
         float readTemperature();
         float readHumidity();
@@ -20,9 +21,9 @@ class DHT11Sensor : public THSensor {
     protected:
         bool updateValues();
 
-        dht sensor;
+        DHT *sensor = nullptr;
         uint8_t m_pin;
-        DHTType m_type = DHTType::UNKNOWN;
+        uint8_t m_type = 0;
         float m_temperature = 0;
         float m_humidity = 0;
 };

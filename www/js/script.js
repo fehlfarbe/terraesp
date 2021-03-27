@@ -452,7 +452,12 @@ function TerraESPViewModel() {
         "SHT31",
         "analog_t",
         "analog_h",
-        "DHT11"]);
+        "DHT11",
+        "DHT21",
+        "DHT22",
+        "AM2301",
+        "AM2302",
+    ]);
 
     self.actuator_types = ko.observableArray([
         "toggle",
