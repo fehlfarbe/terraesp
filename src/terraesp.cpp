@@ -34,7 +34,7 @@
 // #define SENSORS_BUFSIZE 100
 #include "sensors/sensors.h"
 #include "sensors/analog_sensor.h"
-#include "sensors/dht_sensor.h"
+//#include "sensors/dht_sensor.h"
 #include "sensors/sht31_sensor.h"
 #include "sensors/ds18b20_sensor.h"
 //#include <DHT.h>
@@ -372,16 +372,16 @@ void loadSettings(fs::FS &fs)
             if (type.startsWith("dht") || type.startsWith("am23"))
             {
                 // DHTType dht_type = DHTType::UNKNOWN;
-                uint8_t dht_type = 0;
-                if (type == "dht22" || type == "am2302" || type == "am2321"){
-                    dht_type = DHT22;
-                }
-                else if(type == "dht11") {
-                    dht_type = DHT11;
-                }
-                else if(type == "dht21" || type == "am2301"){
-                    dht_type = DHT21;
-                }
+                // uint8_t dht_type = 0;
+                // if (type == "dht22" || type == "am2302" || type == "am2321"){
+                //     dht_type = DHT22;
+                // }
+                // else if(type == "dht11") {
+                //     dht_type = DHT11;
+                // }
+                // else if(type == "dht21" || type == "am2301"){
+                //     dht_type = DHT21;
+                // }
                 // if (type == "dht22")
                 // {
                 //     dht_type = DHTType::DHT22;
@@ -406,10 +406,10 @@ void loadSettings(fs::FS &fs)
                 // {
                 //     thsensor = new DHT11Sensor(s["name"], s["gpio"], dht_type);
                 // }
-                if (dht_type != 0)
-                {
-                    thsensor = new DHT11Sensor(s["name"], s["gpio"], dht_type);
-                }
+                // if (dht_type != 0)
+                // {
+                //     thsensor = new DHT11Sensor(s["name"], s["gpio"], dht_type);
+                // }
             }
             else if (type == "sht31")
             {
