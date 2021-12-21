@@ -33,6 +33,7 @@ bool DHT11Sensor::running(){
 bool DHT11Sensor::updateValues(){
     m_temperature = sensor->readTemperature();
     m_humidity = sensor->readHumidity();
+    return m_temperature != NAN && m_humidity != NAN;
 
     // if (m_type != DHTType::UNKNOWN){
     //     // get new values (try up to 10 times if NaN or incorrect values)

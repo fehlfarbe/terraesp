@@ -37,9 +37,6 @@
 #include "sensors/dht_sensor.h"
 #include "sensors/sht31_sensor.h"
 #include "sensors/ds18b20_sensor.h"
-//#include <DHT.h>
-// use Rob Tillaart's DHTlib because of NaN errors in Adafruit lib
-// #include <dht.h>
 #include "Threshold.h"
 #include "Actuator.h"
 #include "Timer.h"
