@@ -13,30 +13,29 @@ enum ActuatorType
 class Actuator
 {
 public:
-    Actuator(String name, uint8_t gpio, ActuatorType type, bool inverted = false, uint16_t min = 0, uint16_t max = 255, uint8_t channel = 0);
+    Actuator(String name, uint8_t gpio);
     ~Actuator();
 
     String getName();
     uint16_t getGPIO();
-    ActuatorType getType();
-    bool isInverted();
-    uint16_t getMin();
-    uint16_t getMax();
-    uint8_t getChannel();
 
-    uint16_t getValue();
-    void setValue(uint16_t value);
+    virtual uint16_t getValue() = 0;
+    virtual void setValue(uint16_t value) = 0;
 
-    String toString();
+    virtual void turnOn() = 0;
+    virtual void turnOff() = 0;
+
+    virtual void initGPIO() = 0;
+    virtual void deinitGPIO() = 0;
+
+    virtual String toString() = 0;
+    virtual ActuatorType getType() = 0;
 
 protected:
     String name;
     uint8_t gpio;
-    ActuatorType type;
-    bool inverted;
-    uint16_t min;
-    uint16_t max;
-    uint8_t channel;
+
+    bool initialized = false;
 
     Debug debug;
 };

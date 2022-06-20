@@ -7,11 +7,9 @@
 #include <ESPAsyncWiFiManager.h>
 #include <time.h>
 #include <TimeLib.h>
-// #include <TimeAlarms.h>
 #include <FS.h>
 #include <LITTLEFS.h>
 #include <ArduinoJson.h>
-// #include <LinkedList.h>
 #include <Array.h>
 #include <RingBufHelpers.h>
 #include <Adafruit_GFX.h>
@@ -26,22 +24,18 @@
 // NeoPixel status
 #define LED_STATUS_NEO 13
 
+// Buffer size for 24h / 5 minutes
 #define MAX_ELEMENTS 50
 #define SENSORS_PAUSE_S 120
 
-// Buffer size for 24h / 5 minutes
-// #define SENSORS_BUFSIZE 288
-// #define SENSORS_BUFSIZE 100
 #include "sensors/sensors.h"
 #include "sensors/analog_sensor.h"
 #include "sensors/dht_sensor.h"
 #include "sensors/sht31_sensor.h"
 #include "sensors/ds18b20_sensor.h"
-//#include <DHT.h>
-// use Rob Tillaart's DHTlib because of NaN errors in Adafruit lib
-// #include <dht.h>
 #include "Threshold.h"
-#include "Actuator.h"
+#include "ActuatorToggle.h"
+#include "ActuatorPWM.h"
 #include "Timer.h"
 #include "Event.h"
 #include "datatypes.h"
@@ -98,6 +92,7 @@ bool initTimers();
 void handleActuratorChange(AsyncWebServerRequest *request);
 void handleActurators(AsyncWebServerRequest *request);
 void handleSensordata(AsyncWebServerRequest *request);
+void handleSensordataCurrent(AsyncWebServerRequest *request);
 void handleSensors(AsyncWebServerRequest *request);
 void handleSensorTypes(AsyncWebServerRequest *request);
 void handleConfig(AsyncWebServerRequest *request);
@@ -186,6 +181,7 @@ void setup()
     server.on("/api/actuators", HTTP_GET, handleActurators);
     server.on("/api/actuator/change", HTTP_POST, handleActuratorChange);
     server.on("/api/sensors/all", HTTP_GET, handleSensordata);
+    server.on("/api/sensors/current", HTTP_GET, handleSensordataCurrent);
     server.on("/api/config", handleConfig);
     server.on("/reboot", [](AsyncWebServerRequest* r) { // return current device time
         String time = String(now());
@@ -449,20 +445,19 @@ void loadSettings(fs::FS &fs)
         {
             String name = a["name"];
             uint16_t gpio = (uint16_t)a["gpio"];
-            ActuatorType type = strcmp(a["type"], "toggle") ? ActuatorType::ACTUATOR_SLIDER : ActuatorType::ACTUATOR_TOGGLE;
             bool inverted = a["inverted"];
-            uint16_t min = a["min"];
-            uint16_t max = a["max"];
+            uint16_t minVal = a["min"];
+            uint16_t maxVal = a["max"];
 
-            auto actuator = new Actuator(name, gpio, type, inverted, min, max, channel);
-            actuators.push_back(actuator);
-            debug.println("Got new " + actuator->toString());
-
-            // use different channel for next PWM slider
-            if (type == ActuatorType::ACTUATOR_SLIDER)
-            {
+            if(strcmp(a["type"], "toggle") == 0){
+                actuators.push_back((Actuator*)new ActuatorToggle(name, gpio, inverted));
+            } else {
+                actuators.push_back((Actuator*)new ActuatorPWM(name, gpio, minVal, maxVal, channel));
+                // use different channel for next PWM slider
                 channel++;
             }
+            debug.println("Got new " + actuators[actuators.size()-1]->toString());
+
         }
 
         // load timer settings
@@ -690,6 +685,36 @@ void handleSensordata(AsyncWebServerRequest *request)
     request->send(response);
 }
 
+void handleSensordataCurrent(AsyncWebServerRequest *request)
+{
+    DynamicJsonDocument doc(38629);
+    JsonArray sensor_array = doc.createNestedArray("sensors");
+    
+    for (size_t i = 0; i < sensors.size(); i++)
+    {
+        THSensor *s = sensors[i];
+        if (s->isEnabled())
+        {
+            JsonObject sensor = sensor_array.createNestedObject();
+            sensor["name"] = s->getName();
+            if (s->hasTemperature())
+            {
+                sensor["temperature"] = s->readTemperature();
+            }
+            if (s->hasHumidity())
+            {
+                sensor["humidity"] = s->readHumidity();
+            }
+        }
+    }
+
+    // send JSON response
+    AsyncResponseStream *response = request->beginResponseStream("application/json");
+    // serializeJson(doc, debug);
+    serializeJson(doc, *response);
+    request->send(response);
+}
+
 /**
  * @brief Reads current sensor values and returns sensor name, values and current time as JSON object
  * 
@@ -773,8 +798,10 @@ void handleActurators(AsyncWebServerRequest *request)
         actuator["type"] = (uint8_t)a->getType();
         actuator["gpio"] = a->getGPIO();
         actuator["value"] = a->getType() == ActuatorType::ACTUATOR_TOGGLE ? (bool)a->getValue() : a->getValue();
-        actuator["min"] = a->getMin();
-        actuator["max"] = a->getMax();
+        if(a->getType() == ActuatorType::ACTUATOR_SLIDER){
+            actuator["min"] = ((ActuatorPWM*)a)->getMin();
+            actuator["max"] = ((ActuatorPWM*)a)->getMax();
+        }
     }
 
     // send JSON response

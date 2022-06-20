@@ -3,9 +3,6 @@
 
 #include "sensors.h"
 #include "datatypes.h"
-//#include <DHT.h>
-// use Rob Tillaart's DHTlib because of NaN errors in Adafruit lib
-// #include <dht.h>
 #include <DHT.h>
 
 class DHT11Sensor : public THSensor {
