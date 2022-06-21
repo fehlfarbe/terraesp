@@ -1,6 +1,6 @@
 #include "ActuatorPWM.h"
 
-ActuatorPWM::ActuatorPWM(String name, uint8_t gpio, uint16_t min, uint16_t max, uint8_t channel) : Actuator(name, gpio), minVal(minVal), maxVal(maxVal), channel(channel)
+ActuatorPWM::ActuatorPWM(String name, uint8_t gpio, uint16_t minVal, uint16_t maxVal, uint8_t channel) : Actuator(name, gpio), minVal(minVal), maxVal(maxVal), channel(channel)
 {
     initGPIO();
 }
