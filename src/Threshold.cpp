@@ -80,7 +80,7 @@ void Threshold::checkThreshold(){
                     threshold);
     
     // check gap
-    float time_diff = abs(millis()-last_activated) / 1000;
+    float time_diff = abs((long)(millis()-last_activated)) / 1000;
     if(time_diff < gap){
         debug.printf("Threshold %s: only %.2fs of %.2fs time gap reached", name.c_str(), time_diff, gap);
         return;
@@ -129,7 +129,7 @@ void Threshold::deactivate(){
  * 
  */
 void Threshold::update(){
-    if(is_active && abs(millis()-activated)/1000.0 > duration){
+    if(is_active && abs((long)(millis()-last_activated))/1000.0 > duration){
         this->deactivate();
     }
 }

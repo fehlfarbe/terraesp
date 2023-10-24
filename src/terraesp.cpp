@@ -8,7 +8,7 @@
 #include <time.h>
 #include <TimeLib.h>
 #include <FS.h>
-#include <LITTLEFS.h>
+#include <LittleFS.h>
 #include <ArduinoJson.h>
 #include <Array.h>
 #include <RingBufHelpers.h>
@@ -146,7 +146,7 @@ void setup()
     initOTA();
 
     // init File system and show content
-    if (!LITTLEFS.begin(false))
+    if (!LittleFS.begin(false))
     {
         setLEDState(LEDState::ERROR);
         while (true)
@@ -155,10 +155,10 @@ void setup()
             delay(1000);
         }
     }
-    listDir(LITTLEFS, "/", 0);
+    listDir(LittleFS, "/", 0);
 
     // settings
-    loadSettings(LITTLEFS);
+    loadSettings(LittleFS);
 
     // sync time
     setSyncProvider(getNtpTime);
@@ -175,7 +175,7 @@ void setup()
 
     // HTTP handles
     server.begin();
-    server.serveStatic("/", LITTLEFS, "/www/");
+    server.serveStatic("/", LittleFS, "/www/");
 
     // API
     server.on("/api/actuators", HTTP_GET, handleActurators);
@@ -198,7 +198,7 @@ void setup()
                                       "\"chip_rev\" : \"" + ESP.getChipRevision() + "\", "
                                       "\"sdk\" : \"" + ESP.getSdkVersion() + "\", "
                                       "\"wifi\" : \"" + WiFi.RSSI() + "\", "
-                                      "\"LITTLEFS_used\" : \"" + LITTLEFS.usedBytes() + "\", "
+                                      "\"LITTLEFS_used\" : \"" + LittleFS.usedBytes() + "\", "
                                       "\"cpu_freq\" : \"" + ESP.getCpuFreqMHz() + "\"}"
                                       );
     });
@@ -275,6 +275,12 @@ void loop()
             debug.println("New Telnet client");
             telnetClient.flush();
             telnetClient.println("Welcome to TerraESP");
+
+            // print config
+            File dataFile = LittleFS.open("/config.json", FILE_READ);
+            String json = dataFile.readString();
+            dataFile.close();
+            debug.println(json);
 
             // print NTP
             getNtpTime();
@@ -610,7 +616,7 @@ void initOTA()
 bool exists(String path)
 {
     bool exists = false;
-    File file = LITTLEFS.open(path, FILE_READ);
+    File file = LittleFS.open(path, FILE_READ);
     if (!file.isDirectory())
     {
         exists = true;
@@ -885,7 +891,7 @@ void handleConfig(AsyncWebServerRequest *request)
         // }
 
         // replace config file
-        File dataFile = LITTLEFS.open("/config.json", "w");
+        File dataFile = LittleFS.open("/config.json", FILE_WRITE);
         serializeJson(doc, dataFile);
         dataFile.close();
         // send success
@@ -896,7 +902,7 @@ void handleConfig(AsyncWebServerRequest *request)
     }
 
     // load config
-    File config = LITTLEFS.open("/config.json", FILE_READ);
+    File config = LittleFS.open("/config.json", FILE_READ);
     AsyncWebServerResponse *response = request->beginResponse(200, "application/json", config.readString());
     request->send(response);
     config.close();

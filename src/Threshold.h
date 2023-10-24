@@ -49,8 +49,8 @@ class Threshold {
         SensorType type;
 
         // save last activation time for gap
-        long last_activated = 0;
-        long activated = 0;
+        unsigned long last_activated = 0;
+        unsigned long activated = 0;
         bool is_active = false;
 
         RingBufCPP<Event, 100> *events = nullptr;
