@@ -446,7 +446,6 @@ void loadSettings(fs::FS &fs)
 
         // load actuators
         JsonArray actuatorsJSON = doc["actuators"];
-        uint8_t channel = 0;
         for (auto a : actuatorsJSON)
         {
             String name = a["name"];
@@ -458,9 +457,7 @@ void loadSettings(fs::FS &fs)
             if(strcmp(a["type"], "toggle") == 0){
                 actuators.push_back((Actuator*)new ActuatorToggle(name, gpio, inverted));
             } else {
-                actuators.push_back((Actuator*)new ActuatorPWM(name, gpio, minVal, maxVal, channel));
-                // use different channel for next PWM slider
-                channel++;
+                actuators.push_back((Actuator*)new ActuatorPWM(name, gpio, minVal, maxVal));
             }
             debug.println("Got new " + actuators[actuators.size()-1]->toString());
 

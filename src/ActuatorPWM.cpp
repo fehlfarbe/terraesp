@@ -1,6 +1,6 @@
 #include "ActuatorPWM.h"
 
-ActuatorPWM::ActuatorPWM(String name, uint8_t gpio, uint16_t minVal, uint16_t maxVal, uint8_t channel) : Actuator(name, gpio), minVal(minVal), maxVal(maxVal), channel(channel)
+ActuatorPWM::ActuatorPWM(String name, uint8_t gpio, uint16_t minVal, uint16_t maxVal) : Actuator(name, gpio), minVal(minVal), maxVal(maxVal)
 {
     initGPIO();
 }
@@ -20,14 +20,9 @@ uint16_t ActuatorPWM::getMax()
     return maxVal;
 }
 
-uint8_t ActuatorPWM::getChannel()
-{
-    return channel;
-}
-
 uint16_t ActuatorPWM::getValue()
 {
-    return ledcRead(channel);
+    return ledcRead(gpio);
 }
 
 void ActuatorPWM::setValue(uint16_t value)
@@ -45,20 +40,20 @@ void ActuatorPWM::setValue(uint16_t value)
         if (value == HIGH)
             value = maxVal;
         value = min(value, maxVal);
-        debug.printf("Change PWM on channel %d to value: %d\n", channel, value);
-        ledcWrite(channel, value);
+        debug.printf("Change PWM on GPIO %d to value: %d\n", gpio, value);
+        ledcWrite(gpio, value);
     // }
 }
 
 void ActuatorPWM::turnOn()
 {
-    debug.printf("Change PWM on channel %d to value: %d\n", channel, maxVal);
-    ledcWrite(channel, maxVal);
+    debug.printf("Change PWM on GPIO %d to value: %d\n", gpio, maxVal);
+    ledcWrite(gpio, maxVal);
 }
 
 void ActuatorPWM::turnOff()
 {
-    debug.printf("Turn off PWM on gpio %d\n", gpio);
+    debug.printf("Turn off PWM on GPIO %d\n", gpio);
     deinitGPIO();
     pinMode(gpio, OUTPUT);
     digitalWrite(gpio, LOW);
@@ -66,22 +61,20 @@ void ActuatorPWM::turnOff()
 
 void ActuatorPWM::initGPIO()
 {
-    ledcAttachPin(gpio, channel);  // assign RGB led pins to channels
-    ledcSetup(channel, 12000, 10); // 12 kHz PWM, 10-bit resolution
+    ledcAttach(gpio, 24000, 10);  // 24 kHz, 10 bit
     initialized = true;
 }
 
 void ActuatorPWM::deinitGPIO()
 {
-    ledcDetachPin(gpio);
+    ledcDetach(gpio);
     initialized = false;
 }
 
 String ActuatorPWM::toString()
 {
     return "ActuatorPWM " + name + " GPIO=" + String(gpio) +
-           " min=" + String(minVal) + " max=" + String(maxVal) + " channel=" +
-           String(channel);
+           " min=" + String(minVal) + " max=" + String(maxVal);
 }
 
 ActuatorType ActuatorPWM::getType(){
