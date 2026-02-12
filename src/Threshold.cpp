@@ -128,8 +128,10 @@ void Threshold::deactivate(){
  * @brief Run this function in the main loop. It checks if a actuator is active and deactivates if the duration is over
  * 
  */
-void Threshold::update(){
-    if(is_active && abs((long)(millis()-last_activated))/1000.0 > duration){
+void Threshold::update()
+{
+    if (is_active && abs((long)(millis() - activated)) / 1000.0 > duration)
+    {
         this->deactivate();
     }
 }
