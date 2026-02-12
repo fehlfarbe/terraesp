@@ -271,9 +271,9 @@ void loop()
                 telnetClient.stop();
                 debug.println("Telnet Client Stop");
             }
-            telnetClient = telnetServer.available();
+            telnetClient = telnetServer.accept();
             debug.println("New Telnet client");
-            telnetClient.flush();
+            telnetClient.clear();
             telnetClient.println("Welcome to TerraESP");
 
             // print config
@@ -304,6 +304,7 @@ void loop()
     if( (current - last_sensors) / 1000. >= SENSORS_PAUSE_S){
         readSensors();
         last_sensors = current;
+        debug.printf("Free heap %d min free heap %d stack %d\n", ESP.getFreeHeap(), ESP.getMinFreeHeap(), uxTaskGetStackHighWaterMark(NULL));
     }
 
     // update thresholds -> deactivates thresholds after duration
@@ -349,7 +350,7 @@ void loadSettings(fs::FS &fs)
     String json = dataFile.readString();
     dataFile.close();
     debug.println(json);
-    DynamicJsonDocument doc(4096);
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, json);
     if (error)
     {
@@ -419,7 +420,7 @@ void loadSettings(fs::FS &fs)
             }
             else if (type == "ds18b20")
             {
-                thsensor = new DS18B20Sensor(s["name"], s["gpio"], s.containsKey("idx") ? s["idx"] : 0);
+                thsensor = new DS18B20Sensor(s["name"], s["gpio"], s["idx"].is<JsonVariant>() ? s["idx"] : 0);
             }
             else if (type == "analog_t")
             {
@@ -628,11 +629,11 @@ bool exists(String path)
  */
 void handleSensordata(AsyncWebServerRequest *request)
 {
-    DynamicJsonDocument doc(38629);
-    JsonArray sensor_array = doc.createNestedArray("sensors");
-    JsonArray thresholds_array = doc.createNestedArray("thresholds");
-    JsonArray events_array = doc.createNestedArray("events");
-    JsonArray time_array = doc.createNestedArray("time");
+    JsonDocument doc;
+    JsonArray sensor_array = doc["sensors"].to<JsonArray>();
+    JsonArray thresholds_array = doc["thresholds"].to<JsonArray>();
+    JsonArray events_array = doc["events"].to<JsonArray>();
+    JsonArray time_array = doc["time"].to<JsonArray>();
 
     for (size_t i = 0; i < buffer_time.numElements(); i++)
     {
@@ -643,11 +644,11 @@ void handleSensordata(AsyncWebServerRequest *request)
         THSensor *s = sensors[i];
         if (s->isEnabled())
         {
-            JsonObject sensor = sensor_array.createNestedObject();
+            JsonObject sensor = sensor_array.add<JsonObject>();
             sensor["name"] = s->getName();
             if (s->hasTemperature())
             {
-                JsonArray t = sensor.createNestedArray("temperature");
+                JsonArray t = sensor["temperature"].to<JsonArray>();
                 for (size_t j = 0; j < s->buffer_t.numElements(); j++)
                 {
                     t.add(*s->buffer_t.peek(j));
@@ -655,7 +656,7 @@ void handleSensordata(AsyncWebServerRequest *request)
             }
             if (s->hasHumidity())
             {
-                JsonArray h = sensor.createNestedArray("humidity");
+                JsonArray h = sensor["humidity"].to<JsonArray>();
                 for (size_t j = 0; j < s->buffer_h.numElements(); j++)
                 {
                     h.add(*s->buffer_h.peek(j));
@@ -666,7 +667,7 @@ void handleSensordata(AsyncWebServerRequest *request)
     for (size_t i = 0; i < thresholds.size(); i++)
     {
         Threshold *thresh = thresholds[i];
-        JsonObject t = thresholds_array.createNestedObject();
+        JsonObject t = thresholds_array.add<JsonObject>();
         t["name"] = thresh->getName();
         t["threshold"] = thresh->getThreshold();
         t["greater_than"] = thresh->isGreaterThan();
@@ -674,12 +675,16 @@ void handleSensordata(AsyncWebServerRequest *request)
     for (size_t i = 0; i < events.numElements(); i++)
     {
         Event *event = events.peek(i);
-        JsonObject e = events_array.createNestedObject();
+        JsonObject e = events_array.add<JsonObject>();
         e["time"] = event->getTime();
         e["type"] = event->getType();
         e["name"] = event->getEventString();
         e["description"] = event->getDescription();
     }
+
+    debug.printf("Free heap %d min free heap %d stack %d\n", ESP.getFreeHeap(), ESP.getMinFreeHeap(), uxTaskGetStackHighWaterMark(NULL));
+    debug.printf("JSON doc size: %d overflowed: %d\n", doc.size(), doc.overflowed());
+    debug.flush();
 
     // send JSON response
     AsyncResponseStream *response = request->beginResponseStream("application/json");
@@ -690,15 +695,15 @@ void handleSensordata(AsyncWebServerRequest *request)
 
 void handleSensordataCurrent(AsyncWebServerRequest *request)
 {
-    DynamicJsonDocument doc(38629);
-    JsonArray sensor_array = doc.createNestedArray("sensors");
+    JsonDocument doc;
+    JsonArray sensor_array = doc["sensors"].to<JsonArray>();
     
     for (size_t i = 0; i < sensors.size(); i++)
     {
         THSensor *s = sensors[i];
         if (s->isEnabled())
         {
-            JsonObject sensor = sensor_array.createNestedObject();
+            JsonObject sensor = doc.add<JsonObject>();;
             sensor["name"] = s->getName();
             if (s->hasTemperature())
             {
@@ -724,15 +729,15 @@ void handleSensordataCurrent(AsyncWebServerRequest *request)
  */
 void handleSensors(AsyncWebServerRequest *request)
 {
-    DynamicJsonDocument doc(2048);
-    JsonArray sensor_array = doc.createNestedArray("sensors");
+    JsonDocument doc;
+    JsonArray sensor_array = doc["sensors"].to<JsonArray>();
 
     for (size_t i = 0; i < sensors.size(); i++)
     {
         THSensor *s = sensors[i];
         if (s->isEnabled())
         {
-            JsonObject sensor = sensor_array.createNestedObject();
+            JsonObject sensor = sensor_array.add<JsonObject>();
             sensor["name"] = s->getName();
             if (s->hasTemperature())
             {
@@ -760,21 +765,15 @@ void handleSensors(AsyncWebServerRequest *request)
  */
 void handleSensorTypes(AsyncWebServerRequest *request)
 {
-    DynamicJsonDocument doc(2048);
-    JsonArray sensor_types = doc.createNestedArray("sensor_types");
-    // String* types;
-    // String types[SENSOR_TYPE_SIZE] = THSensor::getSensorTypes();
-
-    // debug.printf("%d num types\n", sizeof(types));
-    // debug.printf("types %s\n", types);
-
+    JsonDocument doc;
+    JsonArray sensor_types = doc["sensor_types"].to<JsonArray>();
     String types[SENSOR_TYPE_SIZE];
     for (int i = (int)THSensor::SENSOR_TYPE::UNKNOWN + 1; i < SENSOR_TYPE_SIZE; i++)
     {
         THSensor::SENSOR_TYPE type = static_cast<THSensor::SENSOR_TYPE>(i);
         String s = THSensor::sensorToString(type);
         // debug.printf("\th%d: %s\n", i, s.c_str());
-        JsonObject st_json = sensor_types.createNestedObject();
+        JsonObject st_json;
         st_json["name"] = s;
         sensor_types.add(st_json);
     }
@@ -792,11 +791,10 @@ void handleSensorTypes(AsyncWebServerRequest *request)
  */
 void handleActurators(AsyncWebServerRequest *request)
 {
-    DynamicJsonDocument doc(2048);
-    // JsonArray root = doc.createNestedArray();
+    JsonDocument doc;
     for (const auto &a : actuators)
     {
-        JsonObject actuator = doc.createNestedObject();
+        JsonObject actuator = doc.add<JsonObject>();
         actuator["name"] = a->getName();
         actuator["type"] = (uint8_t)a->getType();
         actuator["gpio"] = a->getGPIO();
@@ -849,7 +847,7 @@ void handleConfig(AsyncWebServerRequest *request)
         {
             debug.printf("Arg %s: %s\n", request->argName(i).c_str(), request->arg(request->argName(i)).c_str());
         }
-        DynamicJsonDocument doc(4096);
+        JsonDocument doc;
         //JsonObject &rootNew = jsonBufferNew.parseObject(server.arg("data"));
         DeserializationError error = deserializeJson(doc, request->arg(request->argName(0)));
 
@@ -865,7 +863,7 @@ void handleConfig(AsyncWebServerRequest *request)
         String fields[] = {"sensors", "actuators", "timers", "thresholds", "general", "network"};
         for (size_t i = 0; i < 5; i++)
         {
-            if (!doc.containsKey(fields[i]))
+            if (!doc[fields[i]].is<JsonVariant>())
             {
                 debug.printf("JSON config misses key %s!", fields[i].c_str());
                 request->send(500, "text/html", "Invalid JSON data! Key " + fields[i] + " missing.");
