@@ -1,13 +1,14 @@
 #ifndef DATATYPES_H
 #define DATATYPES_H
 
-struct TimeSettings {
+struct TimeSettings
+{
     bool dst = false;
     int gmt_offset = 0;
 };
 
-
-enum class DHTType {
+enum class DHTType
+{
     UNKNOWN,
     DHT11,
     DHT21,
@@ -16,7 +17,8 @@ enum class DHTType {
     AM2301
 };
 
-enum LEDState {
+enum LEDState
+{
     NONE,
     ERROR,
     WIFI_STATE_CONNECTING,

@@ -7,7 +7,7 @@
 class ActuatorPWM : public Actuator
 {
 public:
-    ActuatorPWM(String name, uint8_t gpio, uint16_t minVal=0, uint16_t maxVal=1023);
+    ActuatorPWM(String name, uint8_t gpio, uint16_t minVal = 0, uint16_t maxVal = 1023);
     ~ActuatorPWM();
 
     uint16_t getMin();
@@ -25,8 +25,7 @@ public:
     String toString();
     ActuatorType getType();
 
-    protected:
-
+protected:
     uint16_t minVal;
     uint16_t maxVal;
 };

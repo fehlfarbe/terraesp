@@ -683,7 +683,7 @@ void handleSensordata(AsyncWebServerRequest *request)
     }
 
     debug.printf("Free heap %d min free heap %d stack %d\n", ESP.getFreeHeap(), ESP.getMinFreeHeap(), uxTaskGetStackHighWaterMark(NULL));
-    debug.printf("JSON doc size: %d overflowed: %d\n", doc.size(), doc.overflowed());
+    debug.printf("JSON doc size overflowed: %d\n", doc.overflowed());
     debug.flush();
 
     // send JSON response

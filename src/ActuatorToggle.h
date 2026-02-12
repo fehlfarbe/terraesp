@@ -26,7 +26,6 @@ public:
 
 protected:
     bool inverted;
-
 };
 
 #endif

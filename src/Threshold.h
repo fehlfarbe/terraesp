@@ -10,50 +10,52 @@
 #include <Debug.h>
 #include <sensors/sensors.h>
 
-class Threshold {
-    public:
-        enum SensorType {
-            UNKNOWN,
-            TEMPERATURE,
-            HUMIDITY
-        };
+class Threshold
+{
+public:
+    enum SensorType
+    {
+        UNKNOWN,
+        TEMPERATURE,
+        HUMIDITY
+    };
 
-        Threshold(String name, THSensor* sensor, Actuator* actuator, 
-                  float duration, float threshold, bool greater_than,
-                  bool inverted, float gap, Threshold::SensorType sensor_type);
-        ~Threshold();
+    Threshold(String name, THSensor *sensor, Actuator *actuator,
+              float duration, float threshold, bool greater_than,
+              bool inverted, float gap, Threshold::SensorType sensor_type);
+    ~Threshold();
 
-        void checkThreshold();
-        void update();
-        void setEventList(RingBufCPP<Event, 100> *events);
+    void checkThreshold();
+    void update();
+    void setEventList(RingBufCPP<Event, 100> *events);
 
-        String getName();
-        float getThreshold();
-        bool isInverted();
-        bool isGreaterThan();
+    String getName();
+    float getThreshold();
+    bool isInverted();
+    bool isGreaterThan();
 
-    private:
-        void activate();
-        void deactivate();
+private:
+    void activate();
+    void deactivate();
 
-        Debug debug;
+    Debug debug;
 
-        String name;
-        THSensor* sensor;
-        Actuator* actuator;
-        float duration;
-        float threshold;
-        bool greater_than = true;
-        bool inverted = false;
-        float gap;
-        SensorType type;
+    String name;
+    THSensor *sensor;
+    Actuator *actuator;
+    float duration;
+    float threshold;
+    bool greater_than = true;
+    bool inverted = false;
+    float gap;
+    SensorType type;
 
-        // save last activation time for gap
-        unsigned long last_activated = 0;
-        unsigned long activated = 0;
-        bool is_active = false;
+    // save last activation time for gap
+    unsigned long last_activated = 0;
+    unsigned long activated = 0;
+    bool is_active = false;
 
-        RingBufCPP<Event, 100> *events = nullptr;
+    RingBufCPP<Event, 100> *events = nullptr;
 };
 
 #endif

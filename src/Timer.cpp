@@ -2,7 +2,7 @@
 
 /**
  * @brief Construct a new Timer:: Timer object
- * 
+ *
  * @param name Timer name
  * @param b Actuator object
  * @param onHour Timer start hour
@@ -22,7 +22,7 @@ Timer::~Timer()
 
 /**
  * @brief Initializes the Timer
- * 
+ *
  * @param time_min current time of day in minutes
  * @param timerCallback callback function if Alarm/Timer gets triggered
  * @return true success
@@ -71,13 +71,14 @@ bool Timer::isInitialized()
     return initialized;
 }
 
-bool Timer::isTurnedOn(){
+bool Timer::isTurnedOn()
+{
     return turned_on;
 }
 
 // /**
 //  * @brief Checks if the given AlarmId matches the on/off AlarmId and (de-)activates the given actuator
-//  * 
+//  *
 //  * @param id AlarmId of the triggered Alarm (Alarm.getTriggeredAlarmId())
 //  * @return true AlarmId matches on/off AlarmId
 //  * @return false AlarmId does not match on/off AlarmId
@@ -99,11 +100,12 @@ bool Timer::isTurnedOn(){
 
 /**
  * @brief Check if timer should be turned on/off
- * 
+ *
  * @return true if actuator state changed
  * @return false if nothing happened
  */
-bool Timer::update(struct tm timeinfo){
+bool Timer::update(struct tm timeinfo)
+{
     auto current = tmToSec(timeinfo);
     auto start = startToSec();
     auto end = endToSec();
@@ -114,10 +116,13 @@ bool Timer::update(struct tm timeinfo){
     // debug.println();
 
     // check if timer on should be triggered
-    if(!isTurnedOn() && in_range){
+    if (!isTurnedOn() && in_range)
+    {
         activate();
         return true;
-    } else if(isTurnedOn() && !in_range){
+    }
+    else if (isTurnedOn() && !in_range)
+    {
         deactivate();
         return true;
     }
@@ -127,11 +132,12 @@ bool Timer::update(struct tm timeinfo){
 
 /**
  * @brief Activates the actuator pin
- * 
+ *
  */
 void Timer::activate()
 {
-    if(!initialized){
+    if (!initialized)
+    {
         debug.printf("Timer %s isnt initalized, cannot turn on actor", name.c_str());
     }
 
@@ -149,11 +155,12 @@ void Timer::activate()
 
 /**
  * @brief Deactivates the actuator pin
- * 
+ *
  */
 void Timer::deactivate()
 {
-    if(!initialized){
+    if (!initialized)
+    {
         debug.printf("Timer %s isnt initalized, cannot turn off actor", name.c_str());
     }
 
@@ -174,16 +181,19 @@ void Timer::deactivate()
     turned_on = false;
 }
 
-int Timer::tmToSec(const struct tm t){
+int Timer::tmToSec(const struct tm t)
+{
     return (t.tm_hour * 3600) + (t.tm_min * 60) + t.tm_sec;
 }
 
-int Timer::startToSec(){
-    return alarmOnHour*3600 + alarmOnMinute*60;
+int Timer::startToSec()
+{
+    return alarmOnHour * 3600 + alarmOnMinute * 60;
 }
 
-int Timer::endToSec(){
-    return alarmOffHour*3600 + alarmOffMinute*60;
+int Timer::endToSec()
+{
+    return alarmOffHour * 3600 + alarmOffMinute * 60;
 }
 
 void Timer::setEventList(RingBufCPP<Event, 100> *events)
@@ -199,8 +209,9 @@ void Timer::setDebug(Debug &d)
 String Timer::toString()
 {
     String s = "Timer " + name + " on: " + alarmOnHour + ":" + alarmOnMinute + ", off: " + alarmOffHour + ":" + alarmOffMinute +
-           " initialized: " + initialized + " activated: " + isTurnedOn();
-    if(actuator){
+               " initialized: " + initialized + " activated: " + isTurnedOn();
+    if (actuator)
+    {
         s += " actuator: " + actuator->toString();
     }
     return s;
