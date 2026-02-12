@@ -46,7 +46,7 @@
 NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> statusLED(1, LED_STATUS_NEO);
 LEDState statusLEDState = LEDState::NONE;
 
-//WebServer
+// WebServer
 AsyncWebServer server(80);
 DNSServer dns;
 File fsUploadFile;
@@ -111,11 +111,6 @@ void setup()
     // start debug output
     Serial.begin(115200);
 
-    // setup pins
-    // pinMode(LED_BUILTIN, OUTPUT);
-    // digitalWrite(LED_BUILTIN, HIGH);
-    // digitalWrite(LED_BUILTIN, LOW);
-
     // status LED
     statusLED.Begin();
     setLEDState(LEDState::WIFI_STATE_CONNECTING);
@@ -169,8 +164,6 @@ void setup()
         delay(100);
     }
 
-    // timer for sensors, read new sensor values every 120s
-    // Alarm.timerRepeat(120, readSensors);
     readSensors();
 
     // HTTP handles
@@ -183,35 +176,29 @@ void setup()
     server.on("/api/sensors/all", HTTP_GET, handleSensordata);
     server.on("/api/sensors/current", HTTP_GET, handleSensordataCurrent);
     server.on("/api/config", handleConfig);
-    server.on("/reboot", [](AsyncWebServerRequest* r) { // return current device time
+    server.on("/reboot", [](AsyncWebServerRequest *r) { // return current device time
         String time = String(now());
         r->send(200, "text/json", "{\"answer\": \"ok\"}");
         delay(100);
         ESP.restart();
     });
-    server.on("/api/time", [](AsyncWebServerRequest* r) { // return current device time
+    server.on("/api/time", [](AsyncWebServerRequest *r) { // return current device time
         String time = String(now());
         r->send(200, "text/json", "{\"time\": \"" + time + "\"}");
     });
-    server.on("/api/stats", [](AsyncWebServerRequest* r) { // return current device time
+    server.on("/api/stats", [](AsyncWebServerRequest *r) { // return current device time
         r->send(200, "text/json", "{\"free_heap\": \"" + String(ESP.getFreeHeap()) + "\", "
-                                      "\"chip_rev\" : \"" + ESP.getChipRevision() + "\", "
-                                      "\"sdk\" : \"" + ESP.getSdkVersion() + "\", "
-                                      "\"wifi\" : \"" + WiFi.RSSI() + "\", "
-                                      "\"LITTLEFS_used\" : \"" + LittleFS.usedBytes() + "\", "
-                                      "\"cpu_freq\" : \"" + ESP.getCpuFreqMHz() + "\"}"
-                                      );
+                                                                                     "\"chip_rev\" : \"" +
+                                      ESP.getChipRevision() + "\", "
+                                                              "\"sdk\" : \"" +
+                                      ESP.getSdkVersion() + "\", "
+                                                            "\"wifi\" : \"" +
+                                      WiFi.RSSI() + "\", "
+                                                    "\"LITTLEFS_used\" : \"" +
+                                      LittleFS.usedBytes() + "\", "
+                                                             "\"cpu_freq\" : \"" +
+                                      ESP.getCpuFreqMHz() + "\"}");
     });
-
-    // setup parallel task
-    // xTaskCreatePinnedToCore(
-    //   parallelTask, /* Function to implement the task */
-    //   "task2", /* Name of the task */
-    //   10000,  /* Stack size in words */
-    //   NULL,  /* Task input parameter */
-    //   1,  /* Priority of the task */
-    //   &pTask,  /* Task handle. */
-    //   0); /* Core where the task should run */
 
     // init telnetServer
     debug.setTelnet(&telnetServer, &telnetClient);
@@ -250,8 +237,6 @@ void loop()
         wifiManager.autoConnect();
     }
 
-    //debug.printf("WiFi state: %d\n", WiFi.status());
-
     // handle OTA updates
     ArduinoOTA.handle();
 
@@ -284,24 +269,13 @@ void loop()
 
             // print NTP
             getNtpTime();
-
-            // debug.println("Timers:");
-            // for (size_t i = 0; i < timers.size(); i++)
-            // {
-            //     debug.println(timers[i]->toString());
-            // }
-            
-            // debug.println("Thresholds:");
-            // for (size_t i = 0; i < thresholds.size(); i++)
-            // {
-            //     debug.println(thresholds[i]->getName());
-            // }
         }
     }
 
     // read current sensor values
     auto current = millis();
-    if( (current - last_sensors) / 1000. >= SENSORS_PAUSE_S){
+    if ((current - last_sensors) / 1000. >= SENSORS_PAUSE_S)
+    {
         readSensors();
         last_sensors = current;
         debug.printf("Free heap %d min free heap %d stack %d\n", ESP.getFreeHeap(), ESP.getMinFreeHeap(), uxTaskGetStackHighWaterMark(NULL));
@@ -315,33 +289,27 @@ void loop()
 
     // delay, handle alarms/sensors and so on
     // Alarm.delay(10);
-    
+
     // handle timers
     struct tm timeinfo;
     if (getLocalTime(&timeinfo))
     {
-        for(size_t i=0; i<timers.size(); i++){
-            timers[i]->update(timeinfo);            
+        for (size_t i = 0; i < timers.size(); i++)
+        {
+            timers[i]->update(timeinfo);
         }
-    } else {
+    }
+    else
+    {
         debug.println("Failed to obtain time");
     }
 
     delay(100);
 }
 
-// void parallelTask(void *parameter)
-// {
-//     while (true)
-//     {
-//         // Serial.println(ESP.getFreeHeap());
-//         delay(100);
-//     }
-// }
-
 /**
  * @brief load settings an initialize sensors, buttons, timers, thresholds, ...
- * 
+ *
  * @param fs FileSystem
  */
 void loadSettings(fs::FS &fs)
@@ -376,13 +344,16 @@ void loadSettings(fs::FS &fs)
             {
                 // DHTType dht_type = DHTType::UNKNOWN;
                 uint8_t dht_type = 0;
-                if (type == "dht22" || type == "am2302" || type == "am2321"){
+                if (type == "dht22" || type == "am2302" || type == "am2321")
+                {
                     dht_type = DHT22;
                 }
-                else if(type == "dht11") {
+                else if (type == "dht11")
+                {
                     dht_type = DHT11;
                 }
-                else if(type == "dht21" || type == "am2301"){
+                else if (type == "dht21" || type == "am2301")
+                {
                     dht_type = DHT21;
                 }
                 // if (type == "dht22")
@@ -455,13 +426,15 @@ void loadSettings(fs::FS &fs)
             uint16_t minVal = a["min"];
             uint16_t maxVal = a["max"];
 
-            if(strcmp(a["type"], "toggle") == 0){
-                actuators.push_back((Actuator*)new ActuatorToggle(name, gpio, inverted));
-            } else {
-                actuators.push_back((Actuator*)new ActuatorPWM(name, gpio, minVal, maxVal));
+            if (strcmp(a["type"], "toggle") == 0)
+            {
+                actuators.push_back((Actuator *)new ActuatorToggle(name, gpio, inverted));
             }
-            debug.println("Got new " + actuators[actuators.size()-1]->toString());
-
+            else
+            {
+                actuators.push_back((Actuator *)new ActuatorPWM(name, gpio, minVal, maxVal));
+            }
+            debug.println("Got new " + actuators[actuators.size() - 1]->toString());
         }
 
         // load timer settings
@@ -528,20 +501,20 @@ void loadSettings(fs::FS &fs)
 
         // general settings
         JsonObject generalJSON = doc["general"];
-        settings_time.dst = (bool)generalJSON["dst"];                  // daylight saving time
+        settings_time.dst = (bool)generalJSON["dst"];              // daylight saving time
         settings_time.gmt_offset = (int)generalJSON["gmt_offset"]; // gmt offset
     }
 }
 
 /**************************************
- * 
+ *
  * OTA Update
- * 
+ *
  *************************************/
 
 /**
  * @brief Inits the OTA Update
- * 
+ *
  */
 void initOTA()
 {
@@ -555,7 +528,8 @@ void initOTA()
     // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
     ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
 
-    ArduinoOTA.onStart([]() {
+    ArduinoOTA.onStart([]()
+                       {
         String type;
         if (ArduinoOTA.getCommand() == U_FLASH)
         {
@@ -568,20 +542,20 @@ void initOTA()
         }
 
         // NOTE: if updating LITTLEFS this would be the place to unmount LITTLEFS using LITTLEFS.end()
-        debug.println("Start updating " + type);
-    });
-    ArduinoOTA.onEnd([]() {
+        debug.println("Start updating " + type); });
+    ArduinoOTA.onEnd([]()
+                     {
         debug.println("\nEnd");
-        ESP.restart();
-    });
-    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+        ESP.restart(); });
+    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total)
+                          {
         // setLEDState(LEDState::OTA_ACTIVE);
         RgbColor updatedColor = RgbColor::LinearBlend(RgbColor(50, 0, 0), RgbColor(0, 50, 0), (progress / (float)total));
         statusLED.SetPixelColor(0, updatedColor);
         statusLED.Show();
-        debug.printf("Progress: %u%%\r", (progress / (total / 100)));
-    });
-    ArduinoOTA.onError([](ota_error_t error) {
+        debug.printf("Progress: %u%%\r", (progress / (total / 100))); });
+    ArduinoOTA.onError([](ota_error_t error)
+                       {
         debug.printf("Error[%u]: ", error);
         setLEDState(LEDState::ERROR);
         if (error == OTA_AUTH_ERROR)
@@ -593,20 +567,19 @@ void initOTA()
         else if (error == OTA_RECEIVE_ERROR)
             debug.println("Receive Failed");
         else if (error == OTA_END_ERROR)
-            debug.println("End Failed");
-    });
+            debug.println("End Failed"); });
     ArduinoOTA.begin();
     debug.println("OTA update ready");
 }
 
 /**************************************
- * 
+ *
  * HTTP handler
- * 
+ *
  *************************************/
 /**
  * @brief Checks if path exists
- * 
+ *
  * @param path URL
  * @return true exists
  * @return false does not exist
@@ -625,7 +598,7 @@ bool exists(String path)
 
 /**
  * @brief Sends buffered timestamps and sensor value for all sensors as JSON object for charts, ...
- * 
+ *
  */
 void handleSensordata(AsyncWebServerRequest *request)
 {
@@ -697,13 +670,13 @@ void handleSensordataCurrent(AsyncWebServerRequest *request)
 {
     JsonDocument doc;
     JsonArray sensor_array = doc["sensors"].to<JsonArray>();
-    
+
     for (size_t i = 0; i < sensors.size(); i++)
     {
         THSensor *s = sensors[i];
         if (s->isEnabled())
         {
-            JsonObject sensor = doc.add<JsonObject>();;
+            JsonObject sensor = doc.add<JsonObject>();
             sensor["name"] = s->getName();
             if (s->hasTemperature())
             {
@@ -725,7 +698,7 @@ void handleSensordataCurrent(AsyncWebServerRequest *request)
 
 /**
  * @brief Reads current sensor values and returns sensor name, values and current time as JSON object
- * 
+ *
  */
 void handleSensors(AsyncWebServerRequest *request)
 {
@@ -761,7 +734,7 @@ void handleSensors(AsyncWebServerRequest *request)
 
 /**
  * @brief returns all supported sensor types as JSON object
- * 
+ *
  */
 void handleSensorTypes(AsyncWebServerRequest *request)
 {
@@ -787,7 +760,7 @@ void handleSensorTypes(AsyncWebServerRequest *request)
 
 /**
  * @brief Returns JSON array of available buttons and PWM sliders
- * 
+ *
  */
 void handleActurators(AsyncWebServerRequest *request)
 {
@@ -799,9 +772,10 @@ void handleActurators(AsyncWebServerRequest *request)
         actuator["type"] = (uint8_t)a->getType();
         actuator["gpio"] = a->getGPIO();
         actuator["value"] = a->getType() == ActuatorType::ACTUATOR_TOGGLE ? (bool)a->getValue() : a->getValue();
-        if(a->getType() == ActuatorType::ACTUATOR_SLIDER){
-            actuator["min"] = ((ActuatorPWM*)a)->getMin();
-            actuator["max"] = ((ActuatorPWM*)a)->getMax();
+        if (a->getType() == ActuatorType::ACTUATOR_SLIDER)
+        {
+            actuator["min"] = ((ActuatorPWM *)a)->getMin();
+            actuator["max"] = ((ActuatorPWM *)a)->getMax();
         }
     }
 
@@ -814,7 +788,7 @@ void handleActurators(AsyncWebServerRequest *request)
 
 /**
  * @brief Handles actuator click and slider change
- * 
+ *
  */
 void handleActuratorChange(AsyncWebServerRequest *request)
 {
@@ -848,7 +822,6 @@ void handleConfig(AsyncWebServerRequest *request)
             debug.printf("Arg %s: %s\n", request->argName(i).c_str(), request->arg(request->argName(i)).c_str());
         }
         JsonDocument doc;
-        //JsonObject &rootNew = jsonBufferNew.parseObject(server.arg("data"));
         DeserializationError error = deserializeJson(doc, request->arg(request->argName(0)));
 
         if (error)
@@ -905,7 +878,7 @@ void handleConfig(AsyncWebServerRequest *request)
 
 /**
  * @brief gets called when an Alarm was triggered. Checks all Timers for the right alarm and activates actuator
- * 
+ *
  */
 // void timerCallback()
 // {
@@ -924,7 +897,7 @@ void handleConfig(AsyncWebServerRequest *request)
 
 /**
  * @brief Initialize timers, return false if time is not synced
- * 
+ *
  * @return true time is synced
  * @return false time is not synced
  */
@@ -962,7 +935,7 @@ bool initTimers()
  *************************************/
 time_t getNtpTime()
 {
-    //configTime(-3600, -3600, "69.10.161.7");
+    // configTime(-3600, -3600, "69.10.161.7");
 
     debug.printf("Update time with GMT+%02d and DST: %d\n",
                  settings_time.gmt_offset, settings_time.dst);
@@ -982,9 +955,9 @@ time_t getNtpTime()
 }
 
 /**************************************
- * 
+ *
  * Read new sensor values
- * 
+ *
  *************************************/
 void readSensors()
 {
@@ -1009,33 +982,6 @@ void readSensors()
         t->checkThreshold();
     }
 }
-
-// /**************************************
-//  *
-//  * Start rain / whatever for a given duration
-//  *
-//  *************************************/
-// void startThresholdAction(Threshold *t, Actuator *b) {
-//     debug.printf("Activate threshold %s for %.2f seconds...\n", t->name.c_str(), t->duration);
-//     digitalWrite(b->pin, t->inverted ? LOW : HIGH);
-//     Alarm.delay(t->duration*1000);
-//     stopThresholdAction(t, b);
-//     // Alarm.timerOnce(t->duration, [t, b](){
-//     //     digitalWrite(b->pin, t->inverted ? HIGH : LOW);
-//     //     t->last_activated = millis();
-//     // });
-//     // if (settings_rain.initialized) {
-//     //     debug.printf("Let it rain for %d seconds\n", settings_rain.duration);
-//     //     digitalWrite(settings_rain.pin, settings_rain.inverted ? LOW : HIGH);
-//     //     Alarm.timerOnce(settings_rain.duration, stopThresholdAction);
-//     // }
-// }
-
-// void stopThresholdAction(Threshold *t, Actuator *b) {
-//     debug.printf("Deactivate threshold %s after %.2f seconds...\n", t->name.c_str(), t->duration);
-//     digitalWrite(b->pin, t->inverted ? HIGH : LOW);
-//     t->last_activated = millis();
-// }
 
 THSensor *getSensor(String name)
 {
